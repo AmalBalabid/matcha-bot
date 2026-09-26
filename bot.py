@@ -331,7 +331,22 @@ def handle_reaction(event):
 
 def run_scheduler():
     """Run the blocking schedule loop in a background thread."""
-    schedule.every().day.at(SEND_TIME).do(send_matcha_recommendation)
+    # Recommendations aren't ready yet (no group channel, no real logic) — skip
+    # scheduling the daily job entirely until GROUP_CHANNEL_ID is actually set,
+    # rather than registering a job that would just no-op (or crash on a bad
+    # SEND_TIME) every day.
+    if not GROUP_CHANNEL_ID:
+        print("GROUP_CHANNEL_ID is not set — daily matcha recommendations are disabled for now.")
+        while True:
+            time.sleep(3600)
+
+    try:
+        schedule.every().day.at(SEND_TIME).do(send_matcha_recommendation)
+    except schedule.ScheduleValueError as e:
+        print(f"SEND_TIME ({SEND_TIME!r}) is invalid, so the daily job wasn't scheduled: {e}")
+        while True:
+            time.sleep(3600)
+
     print(f"Scheduler started — matcha recommendations will be sent daily at {SEND_TIME}")
     while True:
         schedule.run_pending()
