@@ -129,7 +129,7 @@ You get things going by typing `/matcha-party` in your DM with the bot (it only 
 
 *(If someone else suggested the same spot, it stays on the vote.)*
 
-**If someone's suggestion is one typo away from one already in (e.g. "Starbuks" after "Starbucks"), they're asked instead:**
+**If someone's suggestion is one typo away from one already in (e.g. "Kultra" after "Kultura"), they're asked instead:**
 > Got your suggestion: *{spot}*. Is that the same place as *{match}*, which someone already suggested? I'll count them together unless you say otherwise.
 
 * Button: **Yes, same place**
