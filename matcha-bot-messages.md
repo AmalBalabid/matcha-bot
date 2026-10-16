@@ -353,3 +353,8 @@ You get things going by typing `/matcha-party` in your DM with the bot (it only 
 
 **If anyone types in the chat during a party:**
 > No need to type anything here. Just use the buttons in my messages above.
+
+**If anyone (other than you and Nouf, whose messages are passed between you) messages the bot outside a party:**
+> Hi! Run /matcha-party here to start a group matcha order.
+
+*(While starting parties is limited to a few people, they get "Matcha Party isn't open to everyone yet. Check back soon!" instead.)*

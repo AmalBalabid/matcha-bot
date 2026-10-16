@@ -1822,9 +1822,14 @@ def handle_message(event, say):
         return
     if event.get("channel_type") != "im":
         return
+    # Only new messages (with or without files), not edits or deletions.
+    if event.get("subtype") not in (None, "file_share"):
+        return
 
     channel_id = event.get("channel")
     user_id    = event.get("user")
+    if not user_id:
+        return
     files      = event.get("files", [])
     message    = _extract_message_text(event)
     if not message:
@@ -1847,13 +1852,17 @@ def handle_message(event, say):
 
     # Test mode never relays anything between the admin and the teammate.
     if TEST_MODE:
+        dm(user_id, msg.DM_HELLO)
         return
 
     # Admin DM, fall back to the original "whatever you DM me goes straight
     # to the teammate" relay. (/start itself is handled separately as a real
     # slash command, since Slack intercepts anything starting with "/" before
     # it reaches here.)
-    if channel_id == admin_dm_channel_id["id"] and user_id == ADMIN_USER_ID:
+    # (Matched by who sent it: each person has exactly one DM with the bot, so
+    # this works even before the bot has seen that DM since it last started.)
+    if user_id == ADMIN_USER_ID:
+        admin_dm_channel_id["id"] = channel_id
         forward_to_teammate(message)
         if files:
             channel = target_dm_channel_id["id"] or get_dm_channel(TEAM_MEMBER_USER_ID)
@@ -1866,7 +1875,8 @@ def handle_message(event, say):
         return
 
     # Teammate (Nouf) replying in her onboarding DM with the bot → forward to admin
-    if channel_id == target_dm_channel_id["id"] and user_id == TEAM_MEMBER_USER_ID:
+    if user_id == TEAM_MEMBER_USER_ID:
+        target_dm_channel_id["id"] = channel_id
         log_exchange("message", message)
         forward_to_admin(f"🍵 <@{TEAM_MEMBER_USER_ID}> said: {message}")
         if files:
@@ -1875,6 +1885,13 @@ def handle_message(event, say):
                 forward_to_admin(msg.FILE_FORWARD_FAILED_TO_ADMIN.format(names=", ".join(failed)))
         print(f"[{datetime.now():%H:%M}] Forwarded message from <@{TEAM_MEMBER_USER_ID}> to admin.")
         return
+
+    # Anyone else, outside a party: point them at /matcha-party rather than
+    # leaving them with silence.
+    if ALLOWED_HOSTS and user_id not in ALLOWED_HOSTS:
+        dm(user_id, msg.PARTY_NOT_OPEN_YET)
+    else:
+        dm(user_id, msg.DM_HELLO)
 
 
 @app.command("/start")

@@ -66,9 +66,13 @@ BUSY_IN_ANOTHER_PARTY = (
 PARTY_DM_ONLY = "Run /matcha-party from your DM with me, not a channel."
 
 # Replied (only visible to them) when someone not in MATCHA_ALLOWED_HOSTS runs
-# /matcha-party while starting parties is limited to a few people. Used in
-# handle_matcha_party_command().
+# /matcha-party, or DMs the bot, while starting parties is limited to a few
+# people. Used in handle_matcha_party_command() and handle_message().
 PARTY_NOT_OPEN_YET = "Matcha Party isn't open to everyone yet. Check back soon!"
+
+# DMed to anyone (other than the admin and teammate, whose DMs are relayed)
+# who messages the bot outside a party. Used in handle_message().
+DM_HELLO = "Hi! Run /matcha-party here to start a group matcha order."
 
 # DMed to the host right after start_party_flow() kicks off, asking them to
 # @-mention the invitees. Used in start_party_flow().
