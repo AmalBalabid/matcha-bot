@@ -4,3 +4,4 @@ __pycache__/
 *.pyc
 matcha_config.json
 .DS_Store
+party_state.json
