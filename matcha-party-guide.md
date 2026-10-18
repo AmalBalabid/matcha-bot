@@ -16,12 +16,12 @@ For now, **only you and Amal can start a party**. Anyone else who tries is told 
 
 1. Open your DM with **Matcha Bot** and type `/matcha-party`. It only works from your DM with the bot, not from a channel.
 2. Tap **Pick people**, choose who to invite, and tap **Send invites**.
-3. Wait for people to answer. They have 5 minutes.
+3. Wait for people to answer. They have 5 minutes. You'll see who's in, who can't make it, and who didn't answer.
 4. When at least one person is in, choose how to pick the spot:
    - **I've already decided**: type the spot name in the form.
-   - **Let them suggest**: everyone who's in gets 5 minutes to suggest spots, then 3 minutes to vote.
+   - **Let them suggest**: everyone who's in gets up to 5 minutes to suggest spots, then up to 3 minutes to vote. Each step moves on early once everyone has suggested (at least one spot) or voted.
 5. Everyone who's in gets the order form and has 5 minutes to order.
-6. You get a summary of all the orders. Place the order with the restaurant, then tap **I placed the order ✅**.
+6. You get a summary of all the orders. Place the order with the restaurant, then tap **I placed the order ✅**. If something goes wrong (for example the restaurant can't take the order), tap **There's a problem** and write what happened. Everyone in the party gets your message, and the party carries on.
 7. Add an ETA if you have one (**Add ETA**), or tap **No ETA**.
 8. When the matcha arrives, tap **The order arrived** and everyone gets told. That closes the party.
 
@@ -32,7 +32,7 @@ You can tap **Cancel party** (the red button) on most of your messages at any po
 ## If you're invited
 
 1. You get an invite with **I'm in!** and **Can't make it**.
-2. If the group is suggesting spots, tap **Suggest a spot**. You can suggest as many as you like, and remove any of them until voting starts.
+2. If the group is suggesting spots, tap **Suggest a spot**. You can suggest as many as you like, and remove any of them until voting starts. Voting starts once everyone has suggested at least one.
 3. If there's a vote, tap the spot you want.
 4. When the spot is decided, tap **Place your order** and fill in the form:
    - Drink name
@@ -54,7 +54,7 @@ On the order message you'll also find:
 - **Buttons clean up after themselves.** Once you've answered, or the time is up, the buttons disappear and a small grey line shows what you chose. For example: *Voting has closed · You voted for **Kultura***.
 - **Similar suggestions get merged.** Capital letters and extra spaces never matter. If someone types "Kultra" after "Kultura", they're asked whether it's the same place. Numbers always count as different spots, so "Cafe 1" and "Cafe 2" stay separate.
 - **Ties go to the host.** If two spots tie, the host picks one, or chooses another spot.
-- **Ordering closes early** if everyone has ordered before the 5 minutes are up.
+- **Steps move on early.** Suggestions, voting and ordering each close as soon as everyone has answered, without waiting for the time to run out.
 - **The deadline is shown in Riyadh time.**
 - **One party at a time per person.** Several parties can run at once, but nobody can be in two.
 - **Privacy:** if someone you invite is already in another party, they still show as invited. About 2 minutes later they count as "Can't make it", so nobody can tell they're busy.
@@ -88,6 +88,9 @@ On the order message you'll also find:
 - Similar suggestions are merged, after asking the person who suggested it
 - The host breaks ties
 - **The order arrived** notification
+- **There's a problem** button for the host after the orders are in
+- Steps move on as soon as everyone has answered
+- The host sees who declined and who didn't answer, separately
 - Buttons replaced by a grey line showing each person's answer
 - The bot keeps working through restarts, and quiet parties close on their own
 

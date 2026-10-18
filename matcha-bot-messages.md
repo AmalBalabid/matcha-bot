@@ -90,8 +90,9 @@ You get things going by typing `/matcha-party` in your DM with the bot (it only 
 **If nobody accepts (everyone declined, or 5 minutes passed):**
 > Nobody accepted your invite, so I've scrapped this Matcha Party.
 
-**Once at least one person's in, if anyone declined or never answered, you also get:**
-> Didn't hear back from or declined: {names}
+**Once at least one person's in, if anyone declined or never answered, you also get (only the lines that apply):**
+> Can't make it: {names}
+> Didn't answer: {names}
 
 ---
 
@@ -115,7 +116,7 @@ You get things going by typing `/matcha-party` in your DM with the bot (it only 
 * Submit button: **Send**
 
 **If you tap "Let them suggest", everyone who's in gets this:**
-> Matcha Party time! {host} invited you to the party. Suggest a spot to order from within 5 minutes. You can suggest as many as you like :matcha-kitty:
+> Matcha Party time! {host} invited you to the party. Suggest a spot to order from within 5 minutes. You can suggest as many as you like. Voting starts once everyone has suggested at least one :matcha-kitty:
 
 * Button: **Suggest a spot** *(opens a form with a "Spot name" field; it can be used as many times as they like)*
 
@@ -160,8 +161,12 @@ You get things going by typing `/matcha-party` in your DM with the bot (it only 
 * Button: **Pick a spot** *(opens the "Where are we ordering?" form)*
 * Button: **Cancel party**
 
+*(Suggestions close as soon as everyone who's in has suggested at least one spot, or after 5 minutes.)*
+
 **If suggestions do come in, everyone gets a vote, with a button for each spot:**
 > Suggestions are in! Vote for your favorite, you've got 3 minutes:
+
+*(Voting closes as soon as everyone who's in has voted, or after 3 minutes.)*
 
 **Confirmation shown to someone right after they vote:**
 > Got your vote, thanks!
@@ -297,13 +302,25 @@ You get things going by typing `/matcha-party` in your DM with the bot (it only 
 > • *{name}*: {drink}, {milk}, {sweetness}, {cream}
 
 **If anyone never ordered, this gets added:**
-> Didn't hear back from: {names}
+> Didn't order: {names}
 
 **If anyone tapped "Can't make it", this gets added:**
 > Can't make it: {names}
 
-**Below the summary, a button for you:**
-> I placed the order ✅
+**Below the summary, buttons for you:**
+* Button: **I placed the order ✅**
+* Button: **There's a problem** *(also on the ETA question and on "Tap below when the order arrives")*
+
+**"There's a problem" opens a form:**
+* Title: **What happened?**
+* Field: **Tell everyone what happened** (up to 300 characters)
+* Submit button: **Send**
+
+**Everyone who's in then gets:**
+> Update from {host} about the *{spot}* order: {what you wrote}
+
+**And you get (the party carries on, so the buttons stay):**
+> Sent to everyone in the party. The party carries on, so you can still use the buttons above.
 
 **After you tap it:** *(grey line)*
 > You placed the order

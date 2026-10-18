@@ -129,10 +129,11 @@ RSVP_SENT_TO_HOST = "Invited: {names}. I'll let you know as they respond (give i
 # or the 5-minute window ran out), the party is auto-scrapped at this point. Used in on_rsvp_window_end().
 NOBODY_ACCEPTED = "Nobody accepted your invite, so I've scrapped this Matcha Party."
 
-# DMed to the host alongside ASK_SPOT_METHOD (its own message, sent only if
-# non-empty) once RSVPs close, listing anyone who declined or never
-# responded. Used in on_rsvp_window_end(), formatted with those names.
-RSVP_NOT_JOINING = "Didn't hear back from or declined: {names}"
+# DMed to the host once RSVPs close (only the lines that apply), listing who
+# said they can't make it and who never answered, separately. Used in
+# on_rsvp_window_end(), formatted with their names.
+RSVP_DECLINED_LIST = "Can't make it: {names}"
+RSVP_NO_ANSWER_LIST = "Didn't answer: {names}"
 
 # ── Matcha Party: deciding the spot ───────────────────────────────────────────
 
@@ -161,7 +162,8 @@ BUTTON_SUGGEST = "Let them suggest"
 # with the host's mention.
 SUGGESTION_PROMPT = (
     "Matcha Party time! {host} invited you to the party. Suggest a spot to "
-    "order from within 5 minutes. You can suggest as many as you like :matcha-kitty:"
+    "order from within 5 minutes. You can suggest as many as you like. Voting "
+    "starts once everyone has suggested at least one :matcha-kitty:"
 )
 
 # DMed to the host if nobody suggested a spot within the 5-minute window,
@@ -424,7 +426,7 @@ ORDER_SUMMARY_LINE = "• *{name}*: {drink}, {milk}, {sweetness}, {cream}"
 
 # Line listing accepted invitees who never ordered, appended to the order
 # summary (only if there are any). Used in send_order_summary().
-ORDER_SUMMARY_MISSING = "Didn't hear back from: {names}"
+ORDER_SUMMARY_MISSING = "Didn't order: {names}"
 
 # Line listing invitees who tapped ORDER_DECLINE_BUTTON, appended to the order
 # summary (only if there are any). Used in send_order_summary().
@@ -595,3 +597,23 @@ LINE_HOST_CANCELLED = "You cancelled this party"
 
 # Small grey line under an invitee's suggestion message after they tap Remove.
 LINE_SUGGESTION_REMOVED = "You removed this suggestion · You can suggest another anytime before voting starts"
+
+# ── Matcha Party: reporting a problem ─────────────────────────────────────────
+
+# Button on the order summary, the ETA question and "Tap below when the order
+# arrives", for the host to tell everyone something went wrong (e.g. the
+# restaurant rejected the order). The party carries on. Used in _problem_btn().
+BUTTON_PROBLEM = "There's a problem"
+
+# The form opened by BUTTON_PROBLEM (Slack caps form titles at 24 characters).
+# Used via open_text_modal().
+PROBLEM_MODAL_TITLE = "What happened?"
+PROBLEM_MODAL_LABEL = "Tell everyone what happened"
+
+# DMed to everyone in the party when the host sends the problem form. Used in
+# handle_text_modal(), formatted with the host's mention, the spot and what
+# the host wrote.
+PROBLEM_NOTICE = "Update from {host} about the *{spot}* order: {problem}"
+
+# DMed to the host once PROBLEM_NOTICE has gone out. Used in handle_text_modal().
+PROBLEM_SENT = "Sent to everyone in the party. The party carries on, so you can still use the buttons above."

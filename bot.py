@@ -52,6 +52,7 @@ RIYADH_TZ = timezone(timedelta(hours=3), "Asia/Riyadh")
 SPOT_MAX_LEN        = 60
 ORDER_FIELD_MAX_LEN = 100
 ETA_MAX_LEN         = 100
+PROBLEM_MAX_LEN     = 300
 # After the host gives an ETA, how long the "The order arrived" button stays
 # live before the party is closed quietly.
 ARRIVAL_WAIT_HOURS = 3
@@ -264,6 +265,10 @@ def _blocks(text: str, buttons: list) -> list:
     for i in range(0, len(buttons), 25):
         blocks.append({"type": "actions", "elements": buttons[i:i + 25]})
     return blocks
+
+
+def _problem_btn(party_id: str, party: dict) -> dict:
+    return _btn(msg.BUTTON_PROBLEM, "party_problem", party_ref(party_id, party))
 
 
 def _cancel_btn(party_id: str, party: dict) -> dict:
@@ -753,7 +758,12 @@ def on_rsvp_window_end(party_id: str) -> None:
     party["ghosts"] = {}
 
     accepted = party["accepted"]
-    not_joining = {**party["declined"], **no_response}
+    # Who said no, and who never answered, listed separately for the host.
+    not_joining_lines = []
+    if party["declined"]:
+        not_joining_lines.append(msg.RSVP_DECLINED_LIST.format(names=", ".join(party["declined"].values())))
+    if no_response:
+        not_joining_lines.append(msg.RSVP_NO_ANSWER_LIST.format(names=", ".join(no_response.values())))
 
     if not accepted:
         release_party(state, party_id)
@@ -781,8 +791,8 @@ def on_rsvp_window_end(party_id: str) -> None:
     ]
     dm_live(party, "host", party["host_id"], text, blocks)
     save_state(state)
-    if not_joining:
-        dm(party["host_id"], msg.RSVP_NOT_JOINING.format(names=", ".join(not_joining.values())))
+    if not_joining_lines:
+        dm(party["host_id"], "\n".join(not_joining_lines))
     print(f"[{datetime.now():%H:%M}] Matcha Party RSVPs in, joining: {names}")
 
 
@@ -864,6 +874,10 @@ def handle_suggestion_reply(user_id: str, message: str, party: dict, state: dict
         text = msg.SUGGESTION_RECEIVED_CONFIRMATION.format(spot=suggestion)
     dm_live(party, "suggest", user_id, text, _suggestion_blocks(text, party, entry, ask_merge=bool(near)))
     save_state(state)
+    # Everyone in has suggested at least one spot, no need to wait out the window.
+    suggested = {e["user"] for e in party["suggestions"]}
+    if set(party["accepted"]) <= suggested:
+        on_suggestion_window_end(party["host_id"])
 
 
 def _suggestion_blocks(text: str, party: dict, entry: dict, ask_merge: bool) -> list:
@@ -1049,6 +1063,9 @@ def handle_vote(ack, body, action):
     party["votes"][voter_id] = ref["spot"]
     save_state(state)
     dm(voter_id, msg.VOTE_RECEIVED_CONFIRMATION)
+    # Everyone in has voted, no need to wait out the window.
+    if set(party["accepted"]) <= set(party["votes"]):
+        on_vote_window_end(ref["pid"])
 
 
 def on_vote_window_end(party_id: str) -> None:
@@ -1139,6 +1156,7 @@ _TEXT_MODALS = {
     "spot":       (msg.SPOT_MODAL_TITLE, msg.SPOT_MODAL_LABEL, SPOT_MAX_LEN),
     "suggestion": (msg.SUGGEST_MODAL_TITLE, msg.SPOT_MODAL_LABEL, SPOT_MAX_LEN),
     "eta":        (msg.ETA_MODAL_TITLE, msg.ETA_MODAL_LABEL, ETA_MAX_LEN),
+    "problem":    (msg.PROBLEM_MODAL_TITLE, msg.PROBLEM_MODAL_LABEL, PROBLEM_MAX_LEN),
 }
 
 
@@ -1188,6 +1206,15 @@ def handle_text_modal(ack, body, view, client):
         retext_live(party, meta["msg_ts"], None)
         _close_message(client, meta["msg_channel"], meta["msg_ts"], meta["msg_text"], msg.LINE_HOST_SPOT.format(spot=text))
         handle_host_spot_name(uid, text, party, state)
+    elif purpose == "problem":
+        # The party carries on: the message with the button stays as it is.
+        if not is_host or phase not in _PROBLEM_PHASES:
+            return
+        notice = msg.PROBLEM_NOTICE.format(host=f"<@{party['host_id']}>", spot=party.get("spot_name", "the spot"), problem=text)
+        for guest in party["accepted"]:
+            dm(guest, notice)
+        dm(uid, msg.PROBLEM_SENT)
+        print(f"[{datetime.now():%H:%M}] Host reported a problem with the Matcha Party order.")
     elif purpose == "eta":
         if not is_host or phase != "awaiting_eta":
             return
@@ -1586,6 +1613,7 @@ def send_order_summary(party_id: str, party: dict, state: dict) -> None:
         {"type": "section", "text": {"type": "mrkdwn", "text": summary_text}},
         {"type": "actions", "elements": [
             {"type": "button", "text": {"type": "plain_text", "text": msg.CONFIRM_ORDER_BUTTON}, "action_id": "party_confirm_sent", "value": party_ref(party_id, party)},
+            _problem_btn(party_id, party),
         ]},
     ]
     dm_live(party, "host", party["host_id"], summary_text, blocks)
@@ -1614,9 +1642,28 @@ def handle_confirm_sent(ack, body, action, client):
     dm_live(party, "host", party["host_id"], msg.ASK_ETA, _blocks(msg.ASK_ETA, [
         _btn(msg.BUTTON_ADD_ETA, "party_add_eta", party_ref(party_id, party), style="primary"),
         _btn(msg.BUTTON_NO_ETA, "party_no_eta", party_ref(party_id, party)),
+        _problem_btn(party_id, party),
     ]))
     save_state(state)
     print(f"[{datetime.now():%H:%M}] Order confirmed sent, notified invitees, asked host for an ETA.")
+
+
+# Steps after the orders are in, where the host can report a problem (the
+# restaurant rejected the order, an item is out of stock, and so on).
+_PROBLEM_PHASES = ("awaiting_confirmation", "awaiting_eta", "awaiting_arrival")
+
+
+@app.action("party_problem")
+@locked
+def handle_problem_button(ack, body, action, client):
+    ack()
+    ref = json.loads(action["value"])
+    state = load_state()
+    party = resolve_party(state, ref)
+    if not party or party["phase"] not in _PROBLEM_PHASES or party["host_id"] != body["user"]["id"]:
+        _close_in_place(body, msg.LINE_PARTY_CLOSED)
+        return
+    open_text_modal(client, body, ref["pid"], party, "problem")
 
 
 @app.action("party_add_eta")
@@ -1664,6 +1711,7 @@ def handle_host_eta_reply(user_id: str, message: str, party: dict, state: dict) 
     unlock_if_in(state, party_id, party_id)
     dm_live(party, "host", party_id, msg.WAITING_FOR_ARRIVAL, _blocks(msg.WAITING_FOR_ARRIVAL, [
         _btn(msg.BUTTON_ORDER_ARRIVED, "party_order_arrived", party_ref(party_id, party), style="primary"),
+        _problem_btn(party_id, party),
     ]))
     save_state(state)
     print(f"[{datetime.now():%H:%M}] Matcha Party order sent, waiting for it to arrive.")
