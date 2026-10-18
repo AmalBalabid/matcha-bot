@@ -438,12 +438,14 @@ def forward_to_teammate(text: str) -> None:
     app.client.chat_postMessage(channel=channel, text=text)
 
 
-def _download_slack_file(file_info: dict) -> bytes | None:
-    """Download a file Slack sent us (photos, videos, docs) using the bot token."""
+def _download_slack_file(file_info: dict):
+    """Download a file Slack sent us (photos, videos, docs) using the bot token.
+    Returns (data, problem): data is None on failure, and problem is "scope"
+    when Slack refused for missing permissions, otherwise "error"."""
     url = file_info.get("url_private_download") or file_info.get("url_private")
     if not url:
         print(f"File {file_info.get('name')} has no url_private, can't download it.")
-        return None
+        return None, "error"
     req = urllib.request.Request(url, headers={"Authorization": f"Bearer {SLACK_BOT_TOKEN}"})
     try:
         with urllib.request.urlopen(req) as resp:
@@ -453,29 +455,42 @@ def _download_slack_file(file_info: dict) -> bytes | None:
             if data[:15].lstrip().lower().startswith(b"<!doctype html") or data[:5] == b"<html":
                 print(f"Download of {file_info.get('name')} returned an HTML page, not the "
                       "file, this usually means the bot is missing the 'files:read' scope.")
-                return None
-            return data
+                return None, "scope"
+            return data, None
     except Exception as e:
         print(f"Could not download file {file_info.get('name')}: {e}")
-        return None
+        return None, "error"
 
 
-def forward_files(files: list, channel: str) -> list:
-    """Re-upload files (photos/videos/docs) to another DM so they're actually viewable there,
-    not just described as text. Returns the list of filenames that failed to forward."""
-    failed = []
-    for f in files:
-        name = f.get("name", "file")
-        data = _download_slack_file(f)
-        if data is None:
-            failed.append(name)
-            continue
+def _upload_with_retries(channel: str, data: bytes, name: str, attempts: int = 3) -> bool:
+    """Upload a file, retrying briefly: Slack uploads occasionally fail on a
+    dropped connection that works fine a second later."""
+    for attempt in range(1, attempts + 1):
         try:
             app.client.files_upload_v2(channel=channel, content=data, filename=name)
+            return True
         except Exception as e:
-            print(f"Could not upload file {name} to {channel}: {e}")
+            print(f"Could not upload file {name} to {channel} (attempt {attempt}/{attempts}): {e}")
+            if attempt < attempts:
+                time.sleep(attempt)
+    return False
+
+
+def forward_files(files: list, channel: str):
+    """Re-upload files (photos/videos/docs) to another DM so they're actually viewable there,
+    not just described as text. Returns (names that failed, whether any failure
+    was a missing-permissions problem)."""
+    failed, scope_problem = [], False
+    for f in files:
+        name = f.get("name", "file")
+        data, problem = _download_slack_file(f)
+        if data is None:
             failed.append(name)
-    return failed
+            scope_problem = scope_problem or problem == "scope"
+            continue
+        if not _upload_with_retries(channel, data, name):
+            failed.append(name)
+    return failed, scope_problem
 
 
 # ── Onboarding interview ─────────────────────────────────────────────────────
@@ -1866,11 +1881,11 @@ def handle_message(event, say):
         forward_to_teammate(message)
         if files:
             channel = target_dm_channel_id["id"] or get_dm_channel(TEAM_MEMBER_USER_ID)
-            failed = forward_files(files, channel)
+            failed, scope_problem = forward_files(files, channel)
             if failed:
                 forward_to_admin(msg.FILE_FORWARD_FAILED_TO_TEAMMATE.format(
                     names=", ".join(failed), team_member_id=TEAM_MEMBER_USER_ID
-                ))
+                ) + (" " + msg.FILE_FORWARD_SCOPE_HINT if scope_problem else ""))
         print(f"[{datetime.now():%H:%M}] Forwarded message from admin to <@{TEAM_MEMBER_USER_ID}>.")
         return
 
@@ -1880,9 +1895,10 @@ def handle_message(event, say):
         log_exchange("message", message)
         forward_to_admin(f"🍵 <@{TEAM_MEMBER_USER_ID}> said: {message}")
         if files:
-            failed = forward_files(files, get_dm_channel(ADMIN_USER_ID))
+            failed, scope_problem = forward_files(files, get_dm_channel(ADMIN_USER_ID))
             if failed:
-                forward_to_admin(msg.FILE_FORWARD_FAILED_TO_ADMIN.format(names=", ".join(failed)))
+                forward_to_admin(msg.FILE_FORWARD_FAILED_TO_ADMIN.format(names=", ".join(failed))
+                                 + (" " + msg.FILE_FORWARD_SCOPE_HINT if scope_problem else ""))
         print(f"[{datetime.now():%H:%M}] Forwarded message from <@{TEAM_MEMBER_USER_ID}> to admin.")
         return
 

@@ -21,22 +21,21 @@ SETUP_SENT_CONFIRMATION = (
     "Anything you DM me, I'll pass straight on to them too."
 )
 
-# Sent to the admin when a file the teammate uploaded couldn't be re-uploaded
-# (download or upload failure). Used in handle_message(), in the "teammate
-# replying in her onboarding DM" branch, after a failed forward_files() call.
-FILE_FORWARD_FAILED_TO_ADMIN = (
-    "⚠️ Couldn't forward the actual file(s) ({names}). The bot probably "
-    "needs the 'files:read' bot scope added (OAuth & Permissions), then "
-    "reinstall the app."
-)
+# Sent to the admin when a file the teammate uploaded couldn't be passed on
+# (after a few upload attempts). Used in handle_message(), formatted with the
+# file names. FILE_FORWARD_SCOPE_HINT is added when the cause was permissions.
+FILE_FORWARD_FAILED_TO_ADMIN = "⚠️ Couldn't forward the file(s) from Nouf ({names}). Ask her to send it again."
 
-# Sent to the admin when a file the admin uploaded couldn't be forwarded on to
-# the teammate. Used in handle_message(), in the "admin DM, falling back to
-# the onboarding relay" branch, after a failed forward_files() call.
-FILE_FORWARD_FAILED_TO_TEAMMATE = (
-    "⚠️ Couldn't forward the actual file(s) ({names}) to "
-    "<@{team_member_id}>. The bot probably needs the 'files:read' bot scope"
-    " added (OAuth & Permissions), then reinstall the app."
+# Sent to the admin when a file they uploaded couldn't be passed on to the
+# teammate (after a few upload attempts). Used in handle_message(), formatted
+# with the file names and the teammate's ID.
+FILE_FORWARD_FAILED_TO_TEAMMATE = "⚠️ Couldn't forward the file(s) ({names}) to <@{team_member_id}>. Please try sending it again."
+
+# Added to the two messages above only when Slack refused the download for
+# missing permissions.
+FILE_FORWARD_SCOPE_HINT = (
+    "The bot seems to be missing the 'files:read' scope (OAuth & Permissions), "
+    "so add it and reinstall the app first."
 )
 
 # ── Matcha Party: starting ────────────────────────────────────────────────────
