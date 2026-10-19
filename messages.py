@@ -122,11 +122,12 @@ RSVP_ACCEPTED_CONFIRMATION = "You're in! I'll let you know once the spot's decid
 RSVP_DECLINED_CONFIRMATION = "No worries, maybe next time!"
 
 # DMed to the host right after invites go out, confirming who was invited.
-# Used in handle_invitee_reply(), formatted with the invited names.
-RSVP_SENT_TO_HOST = "Invited: {names}. I'll let you know as they respond (give it up to 5 minutes)."
+# Used in invite_people(), formatted with the invited names and how long
+# invites stay open.
+RSVP_SENT_TO_HOST = "Invited: {names}. I'll let you know as they respond (give it up to {minutes})."
 
 # DMed to the host if nobody accepted by the time RSVPs closed (all declined,
-# or the 5-minute window ran out), the party is auto-scrapped at this point. Used in on_rsvp_window_end().
+# or the invite window ran out), the party is auto-scrapped at this point. Used in on_rsvp_window_end().
 NOBODY_ACCEPTED = "Nobody accepted your invite, so I've scrapped this Matcha Party."
 
 # DMed to the host once RSVPs close (only the lines that apply), listing who
@@ -158,38 +159,46 @@ BUTTON_SUGGEST = "Let them suggest"
 
 
 # DMed to every accepted invitee after the host taps BUTTON_SUGGEST, opening
-# the 5-minute suggestion window. Used in handle_spot_suggest(), formatted
+# the suggestion window. Used in handle_spot_suggest(), formatted
 # with the host's mention.
 SUGGESTION_PROMPT = (
     "Matcha Party time! {host} invited you to the party. Suggest a spot to "
-    "order from within 5 minutes. You can suggest as many as you like. Voting "
+    "order from within {minutes}. You can suggest as many as you like. Voting "
     "starts once everyone has suggested at least one :matcha-kitty:"
 )
 
-# DMed to the host if nobody suggested a spot within the 5-minute window,
+# DMed to the host if nobody suggested a spot within the suggestion window,
 # asking what to do next (pause-and-ask fallback). Used in
 # on_suggestion_window_end().
 NO_SUGGESTIONS_FALLBACK = (
-    "Nobody suggested a spot within 5 minutes. Pick a spot yourself, or "
+    "Nobody suggested a spot within {minutes}. Pick a spot yourself, or "
     "cancel this party."
 )
 
 # Header text on the vote message (with one button per suggestion) sent to
 # every accepted invitee once suggestions are in. Used in
 # on_suggestion_window_end().
-VOTE_PROMPT_HEADER = "Suggestions are in! Vote for your favorite, you've got 3 minutes:"
+VOTE_PROMPT_HEADER = "Suggestions are in! Vote for your favorite, you've got {minutes}:"
 
-# DMed to the host if nobody voted within the 3-minute window, asking what to
+# DMed to the host if nobody voted within the voting window, asking what to
 # do next (pause-and-ask fallback), listing the suggestions that came in.
 # Used in on_vote_window_end().
 NO_VOTES_FALLBACK = (
-    "Nobody voted within 3 minutes. Pick one of the suggestions, choose "
+    "Nobody voted within {minutes}. Pick one of the suggestions, choose "
     "another spot, or cancel this party."
 )
 
-# DMed to the host once voting closes with votes in, showing the tally and
-# the winning spot. Used in on_vote_window_end().
-VOTE_RESULTS_TO_HOST = "Voting results:\n{breakdown}\nWinner: *{winner}*"
+# DMed to the host once voting closes with a clear winner, showing the tally
+# and the winning spot, with BUTTON_GO_WITH, BUTTON_ANOTHER_SPOT and Cancel.
+# Nobody orders until the host answers. Used in on_vote_window_end().
+VOTE_RESULTS_TO_HOST = (
+    "Voting results:\n{breakdown}\nWinner: *{winner}*\nGo with it, choose "
+    "another spot, or cancel the party?"
+)
+
+# Button on VOTE_RESULTS_TO_HOST that approves the winning spot. Used in
+# _ask_host_to_pick(), formatted with the spot.
+BUTTON_GO_WITH = "Go with {spot}"
 
 # DMed to the host instead of VOTE_RESULTS_TO_HOST when two or more spots tie
 # for the most votes, with a button per tied spot. Used in
@@ -246,7 +255,7 @@ BUTTON_REMOVE_SUGGESTION = "Remove"
 # handle_host_spot_name(), formatted with the limit.
 SPOT_TOO_LONG = "That's a bit long. Keep the spot name under {max} characters and send it again."
 
-# DMed to an invitee who replies with a suggestion after the 5-minute
+# DMed to an invitee who replies with a suggestion after the
 # suggestion window closed. Used in handle_message().
 SUGGESTION_WINDOW_CLOSED = "Suggestions are closed for this one, sorry!"
 
@@ -294,6 +303,18 @@ ORDER_MODAL_SUBMIT = "Submit"
 # handle_place_order().
 DRINK_LABEL = "Drink name"
 
+# Field label for the optional size input on the order modal. Used in
+# _order_modal_view().
+SIZE_LABEL = "Size (optional)"
+
+# Field label for the optional comments box at the bottom of the order modal.
+# Used in _order_modal_view().
+COMMENTS_LABEL = "Comments (optional)"
+
+# Added after an order's details in the summary and the grey line when the
+# invitee wrote comments. Used in order_details(), formatted with them.
+ORDER_COMMENTS = " · Comments: {comments}"
+
 # Field label for the milk-type input on the order modal. Used in
 # handle_place_order().
 MILK_LABEL = "Milk type"
@@ -317,6 +338,12 @@ CREAM_WITHOUT = "Without cream"
 # Field label for the sweetness-level input on the order modal. Used in
 # handle_place_order().
 SWEETNESS_LABEL = "Sweetness level"
+
+# Radio-button option for "Default" on the order modal (the restaurant's
+# usual sweetness), and what's stored and shown in the summary for it. Used
+# in _order_modal_view() and _SWEETNESS.
+SWEETNESS_DEFAULT = "Default"
+SWEETNESS_DEFAULT_VALUE = "Default sweetness"
 
 # Radio-button option label for "Sweet" on the order modal, and also used as
 # the stored/displayed value for that choice. Used in handle_place_order()
@@ -421,8 +448,8 @@ ORDER_SUMMARY_HEADER = "Order summary for *{spot}*:"
 
 # One line per accepted invitee who ordered, appended to the order summary.
 # Used in send_order_summary(), formatted with each invitee's name and order
-# details.
-ORDER_SUMMARY_LINE = "• *{name}*: {drink}, {milk}, {sweetness}, {cream}"
+# details (see order_details()).
+ORDER_SUMMARY_LINE = "• *{name}*: {order}"
 
 # Line listing accepted invitees who never ordered, appended to the order
 # summary (only if there are any). Used in send_order_summary().
@@ -501,6 +528,16 @@ BUTTON_PICK_PEOPLE = "Pick people"
 INVITE_MODAL_TITLE = "Invite to Matcha Party"
 INVITE_MODAL_LABEL = "Who's invited?"
 INVITE_MODAL_SUBMIT = "Send invites"
+INVITE_MODAL_PLACEHOLDER = "Type names to add people"
+
+# The step times on the people-picker form, in minutes (1 to 60). Used in
+# handle_pick_people().
+STEP_TIMES_HEADER = "*How long each step lasts* (in minutes)"
+STEP_TIMES_RSVP = "Answering the invite"
+STEP_TIMES_SUGGESTION = "Suggesting spots"
+STEP_TIMES_VOTE = "Voting"
+STEP_TIMES_ORDER = "Ordering"
+STEP_TIMES_SUGGEST_HINT = "Only used if you let the group suggest"
 
 # Shown on the people-picker form if the host only picked themselves. Used in
 # handle_invite_submission().
@@ -587,7 +624,7 @@ LINE_HOST_SPOT = "You chose *{spot}*"
 LINE_HOST_PICKED = "You chose *{spot}*"
 LINE_HOST_ALREADY_SETTLED = "This is already settled"
 LINE_HOST_KEPT = "You kept *{spot}*"
-LINE_HOST_SWITCHED = "You switched to *{spot}* · Orders were reset and everyone has 5 more minutes"
+LINE_HOST_SWITCHED = "You switched to *{spot}* · Orders were reset and everyone has {minutes} more"
 LINE_HOST_SUGGESTION_INACTIVE = "This suggestion isn't active anymore"
 LINE_HOST_PLACED = "You placed the order"
 LINE_HOST_ETA = "ETA sent: *{eta}*"
@@ -600,20 +637,60 @@ LINE_SUGGESTION_REMOVED = "You removed this suggestion · You can suggest anothe
 
 # ── Matcha Party: reporting a problem ─────────────────────────────────────────
 
-# Button on the order summary, the ETA question and "Tap below when the order
-# arrives", for the host to tell everyone something went wrong (e.g. the
-# restaurant rejected the order). The party carries on. Used in _problem_btn().
+# Button on the order summary, the bills question, the ETA question and "Tap
+# below when the order arrives", for the host to tell everyone something went
+# wrong (e.g. the restaurant rejected the order). Used in _problem_btn().
 BUTTON_PROBLEM = "There's a problem"
 
-# The form opened by BUTTON_PROBLEM (Slack caps form titles at 24 characters).
-# Used via open_text_modal().
+# The form opened by BUTTON_PROBLEM (Slack caps form titles at 24 characters):
+# what happened, then a required choice between cancelling the party and
+# carrying on. Used in handle_problem_button().
 PROBLEM_MODAL_TITLE = "What happened?"
 PROBLEM_MODAL_LABEL = "Tell everyone what happened"
+PROBLEM_NEXT_LABEL = "What should happen to the party?"
+PROBLEM_NEXT_CANCEL = "Cancel the party"
+PROBLEM_NEXT_CARRY_ON = "Carry on"
 
-# DMed to everyone in the party when the host sends the problem form. Used in
-# handle_text_modal(), formatted with the host's mention, the spot and what
-# the host wrote.
+# DMed to everyone in the party when the host sends the problem form and
+# chooses to carry on. Used in handle_problem_submission(), formatted with the
+# host's mention, the spot and what the host wrote.
 PROBLEM_NOTICE = "Update from {host} about the *{spot}* order: {problem}"
 
-# DMed to the host once PROBLEM_NOTICE has gone out. Used in handle_text_modal().
+# DMed to the host once PROBLEM_NOTICE has gone out. Used in
+# handle_problem_submission().
 PROBLEM_SENT = "Sent to everyone in the party. The party carries on, so you can still use the buttons above."
+
+# DMed to everyone in the party when the host sends the problem form and
+# chooses to cancel. Used in handle_problem_submission().
+PROBLEM_NOTICE_CANCELLED = "Update from {host} about the *{spot}* order: {problem}\nThe party has been cancelled."
+
+# DMed to the host once PROBLEM_NOTICE_CANCELLED has gone out. Used in
+# handle_problem_submission().
+PROBLEM_CANCELLED = "Sent to everyone and cancelled the party. Run /matcha-party whenever you want to start another."
+
+# ── Matcha Party: bills ───────────────────────────────────────────────────────
+
+# DMed to the host right after they tap CONFIRM_ORDER_BUTTON (skipped if
+# nobody ordered), with BUTTON_SEND_BILLS / BUTTON_SKIP_BILLS. Used in
+# handle_confirm_sent().
+ASK_BILLS = "Want to send everyone their bill? I'll message each person privately."
+BUTTON_SEND_BILLS = "Send bills"
+BUTTON_SKIP_BILLS = "Skip"
+
+# The bills form: one amount per person who ordered. Used in
+# handle_send_bills_button(), the label formatted with the person's name.
+BILLS_MODAL_TITLE = "Send bills"
+BILLS_MODAL_LABEL = "{name} (SAR)"
+BILLS_MODAL_HINT = "Enter 0 if they don't owe anything"
+
+# DMed privately to each person with an amount above 0. Used in
+# handle_bills_submission(), formatted with the host's mention, the amount
+# and the spot.
+BILL_NOTICE = "You owe {host} {amount} SAR for your order from *{spot}*"
+
+# Grey line under ASK_BILLS once the host sends the form (BILL_SENT_ITEM per
+# person, joined with commas) or taps Skip. Used in handle_bills_submission()
+# and handle_skip_bills().
+BILL_SENT_ITEM = "{name} {amount} SAR"
+LINE_HOST_BILLS_SENT = "Bills sent: *{bills}*"
+LINE_HOST_NO_BILLS = "No bills sent"

@@ -21,7 +21,7 @@ The bot runs in Socket Mode, so no public URL or Request URL is needed: just a v
 
 To limit who can start a party (e.g. for a trial run), set `MATCHA_ALLOWED_HOSTS` to a comma-separated list of Slack user IDs; anyone else running `/matcha-party` is told it isn't open yet. Remove it to open parties to everyone.
 
-To try a Matcha Party on your own, start it with `MATCHA_TEST_MODE=1 python3 bot.py`: you can @-mention yourself as the invitee, the windows shrink to 1 minute (votes 30 seconds), and the onboarding relay is switched off so nothing reaches the teammate. Leave it off for real use.
+To try a Matcha Party on your own, start it with `MATCHA_TEST_MODE=1 python3 bot.py`: you can pick yourself as the invitee, and the onboarding relay is switched off so nothing reaches the teammate. For a quick run, set every step to 1 minute on the invite form. Leave it off for real use.
 
 ### Environment variables (`.env`)
 
@@ -102,34 +102,41 @@ Each party dict (`default_party`):
 | `dropped_out` | Invitees who tapped "Can't make it" after the spot was announced (listed in the order summary) |
 | `uid` | Unique ID for this party, stamped on every button/modal via `party_ref` |
 | `timer` | The party's one pending deadline, `{"kind", "due", ...}`: see Timers |
+| `minutes` | How long each timed step lasts (`rsvp`, `suggestion`, `vote`, `order`), set by the host on the invite form (defaults in `DEFAULT_MINUTES`) |
 
 ### Phase state machine
 
 ```
 awaiting_invitees
   -> awaiting_rsvps          (host picks people in the invite form)
-       -> [released, NOBODY_ACCEPTED]        (nobody accepted within 5 min)
+       -> [released, NOBODY_ACCEPTED]        (nobody accepted in time)
        -> awaiting_spot_method               (at least one accept)
             -> awaiting_spot_name             ("I've already decided" -> spot form)
             -> collecting_suggestions         ("Let them suggest")
-                 -> awaiting_host_fallback_spot  (no suggestions in 5 min -> "Pick a spot" form)
+                 -> awaiting_host_fallback_spot  (no suggestions in time -> "Pick a spot" form)
                  -> collecting_votes             (suggestions came in)
-                      -> awaiting_host_fallback_spot  (no votes in 3 min -> tap a suggestion, or "Another spot" form)
-                      -> awaiting_orders            (votes came in, clear winner -> spot announced)
+                      -> awaiting_host_fallback_spot  (no votes in time -> tap a suggestion, or "Another spot" form)
+                      -> awaiting_spot_approval     (clear winner -> host taps "Go with <spot>", "Another spot" form, or Cancel)
+                           -> awaiting_orders
                       -> awaiting_tiebreak          (top spots tied -> host taps one, or "Another spot" form)
                            -> awaiting_orders
             -> awaiting_orders   (host entered or picked a spot, from any path above)
                  -> awaiting_orders         (host switched to an invitee's "Suggest somewhere else" spot:
-                                             orders cleared, order_round bumped, fresh 5-min window)
+                                             orders cleared, order_round bumped, fresh order window)
                  -> [released, ALL_DROPPED_OUT]  (every invitee tapped "Can't make it")
-                 -> awaiting_confirmation   (everyone ordered, or 5-min window elapsed)
-                      -> awaiting_eta        (host taps "I placed the order")
+                 -> awaiting_confirmation   (everyone ordered, or the order window elapsed)
+                      -> awaiting_bills      (host taps "I placed the order"; skipped if nobody ordered)
+                           -> awaiting_eta   (host sends the bills form, or taps "Skip")
                            -> awaiting_arrival  (host sends an ETA in the form, or taps "No ETA"; host is unlocked)
                                 -> [released]   (host taps "The order arrived", or ARRIVAL_WAIT_HOURS (3) pass)
 
 Any phase that waits on the host (awaiting_invitees, awaiting_spot_method,
 awaiting_spot_name, awaiting_host_fallback_spot, awaiting_tiebreak,
-awaiting_confirmation, awaiting_eta) -> [released, PARTY_TIMED_OUT] after HOST_IDLE_MINUTES (60) with no reply.
+awaiting_spot_approval, awaiting_confirmation, awaiting_bills, awaiting_eta)
+-> [released, PARTY_TIMED_OUT] after HOST_IDLE_MINUTES (60) with no reply.
+
+From awaiting_confirmation onwards, "There's a problem" opens a form where the host
+writes what happened and must choose: cancel (-> [released], everyone told) or carry on.
 ```
 
 The host can cancel at any point: the red "Cancel party" button on their step messages, or `/matcha-party` while a party is running (which replies with a Cancel button). Typing "cancel" in the DM also still works. All of these go to `cancel_party`, which tears down (`release_party`) and notifies anyone who was invited or had already joined.
@@ -144,16 +151,17 @@ The host can cancel at any point: the red "Cancel party" button on their step me
 
 Each party has at most one pending deadline, stored on the party as `timer` (`set_timer`) and saved to `party_state.json`. A background thread (`timer_loop`) calls `run_due_timers` every 5 seconds, which disarms and fires anything due. Because deadlines live on disk, a restart picks them back up, and anything that came due while the bot was down fires as soon as it's back. Each handler checks the party is still in the expected `phase` before acting, so a stale timer is a no-op.
 
-- RSVPs: 5 minutes (`on_rsvp_window_end`)
-- Suggestions: 5 minutes (`on_suggestion_window_end`)
-- Votes: 3 minutes (`on_vote_window_end`)
-- Orders: 5 minutes from spot announcement (`on_order_window_end`), restarted if the host switches spots
+- RSVPs, suggestions, votes and orders last as long as the host set on the invite form (1 to 60 minutes each, starting at 5, 5, 3 and 5; `step_seconds`)
+- RSVPs: `on_rsvp_window_end`
+- Suggestions: `on_suggestion_window_end`
+- Votes: `on_vote_window_end`
+- Orders: from spot announcement (`on_order_window_end`), restarted if the host switches spots
 - Host idle: 60 minutes at any step waiting on the host (`on_host_idle`), closes the party
 - Arrival: 3 hours after the ETA step (`on_arrival_wait_end`), closes the party quietly if nobody tapped "The order arrived"
 
 The order deadline shown to invitees is in Riyadh time (`RIYADH_TZ`, fixed UTC+3), regardless of the server's time zone.
 
-The RSVP and order windows also close early once everyone relevant has responded: `on_rsvp_window_end` runs immediately once `pending_rsvps` empties out, and `send_order_summary` runs as soon as every accepted invitee has ordered. The suggestion and vote windows always run their full length.
+The RSVP and order windows also close early once everyone relevant has responded: `on_rsvp_window_end` runs immediately once `pending_rsvps` empties out, suggestions close once every accepted invitee has suggested at least one spot, voting closes once all of them have voted, and `send_order_summary` runs as soon as every accepted invitee has ordered.
 
 ### Concurrency
 

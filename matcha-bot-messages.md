@@ -38,8 +38,15 @@ You get things going by typing `/matcha-party` in your DM with the bot (it only 
 
 **"Pick people" opens a form:**
 * Title: **Invite to Matcha Party**
-* Field: **Who's invited?** (search and pick teammates)
+* Field: **Who's invited?** (type names to add people)
+* **How long each step lasts** (in minutes, 1 to 60), already filled in with the usual times so you can just leave them:
+  * **Answering the invite** (5)
+  * **Suggesting spots** (5) *(only used if you let the group suggest)*
+  * **Voting** (3) *(only used if you let the group suggest)*
+  * **Ordering** (5)
 * Submit button: **Send invites**
+
+*(Wherever a message below says how long something lasts, it uses the times you set here. The examples show the usual times.)*
 
 **After you send it:** *(grey line under the question)*
 > Invites sent to *{names}*
@@ -74,7 +81,7 @@ You get things going by typing `/matcha-party` in your DM with the bot (it only 
 *(If someone you picked is already in someone else's party, they're still listed as invited, but they never get a message. About 2 minutes later they're counted as "Can't make it", so it looks like a normal decline and nobody can tell they're in another party.)*
 
 **Meanwhile, you get this confirming who was invited:**
-> Invited: {names}. I'll let you know as they respond (give it up to 5 minutes).
+> Invited: {names}. I'll let you know as they respond (give it up to {minutes}).
 
 **Confirmation shown to someone right after they tap "I'm in!":**
 > You're in! I'll let you know once the spot's decided.
@@ -82,12 +89,12 @@ You get things going by typing `/matcha-party` in your DM with the bot (it only 
 **Confirmation shown to someone right after they tap "Can't make it":**
 > No worries, maybe next time!
 
-**When the invite closes (5 minutes, or once everyone answered), its buttons disappear and a small grey line showing their answer appears under the invite:**
+**When the invite closes (time's up, or once everyone answered), its buttons disappear and a small grey line showing their answer appears under the invite:**
 > This invite has closed · You said *you're in*
 > This invite has closed · You said *you can't make it*
 > This invite has closed *(if they didn't answer)*
 
-**If nobody accepts (everyone declined, or 5 minutes passed):**
+**If nobody accepts (everyone declined, or time ran out):**
 > Nobody accepted your invite, so I've scrapped this Matcha Party.
 
 **Once at least one person's in, if anyone declined or never answered, you also get (only the lines that apply):**
@@ -116,7 +123,7 @@ You get things going by typing `/matcha-party` in your DM with the bot (it only 
 * Submit button: **Send**
 
 **If you tap "Let them suggest", everyone who's in gets this:**
-> Matcha Party time! {host} invited you to the party. Suggest a spot to order from within 5 minutes. You can suggest as many as you like. Voting starts once everyone has suggested at least one :matcha-kitty:
+> Matcha Party time! {host} invited you to the party. Suggest a spot to order from within {minutes}. You can suggest as many as you like. Voting starts once everyone has suggested at least one :matcha-kitty:
 
 * Button: **Suggest a spot** *(opens a form with a "Spot name" field; it can be used as many times as they like)*
 
@@ -155,18 +162,18 @@ You get things going by typing `/matcha-party` in your DM with the bot (it only 
 **If someone sends the suggestion form just after suggestions closed (they had it open):**
 > Suggestions are closed for this one, sorry!
 
-**If nobody suggests anything in 5 minutes, you get:**
-> Nobody suggested a spot within 5 minutes. Pick a spot yourself, or cancel this party.
+**If nobody suggests anything in time, you get:**
+> Nobody suggested a spot within {minutes}. Pick a spot yourself, or cancel this party.
 
 * Button: **Pick a spot** *(opens the "Where are we ordering?" form)*
 * Button: **Cancel party**
 
-*(Suggestions close as soon as everyone who's in has suggested at least one spot, or after 5 minutes.)*
+*(Suggestions close as soon as everyone who's in has suggested at least one spot, or when time's up.)*
 
 **If suggestions do come in, everyone gets a vote, with a button for each spot:**
-> Suggestions are in! Vote for your favorite, you've got 3 minutes:
+> Suggestions are in! Vote for your favorite, you've got {minutes}:
 
-*(Voting closes as soon as everyone who's in has voted, or after 3 minutes.)*
+*(Voting closes as soon as everyone who's in has voted, or when time's up.)*
 
 **Confirmation shown to someone right after they vote:**
 > Got your vote, thanks!
@@ -175,16 +182,21 @@ You get things going by typing `/matcha-party` in your DM with the bot (it only 
 > Voting has closed · You voted for *{spot}*
 > Voting has closed · You didn't vote
 
-**If nobody votes in 3 minutes, you get a button for each suggestion, plus:**
-> Nobody voted within 3 minutes. Pick one of the suggestions, choose another spot, or cancel this party.
+**If nobody votes in time, you get a button for each suggestion, plus:**
+> Nobody voted within {minutes}. Pick one of the suggestions, choose another spot, or cancel this party.
 
 * Button: **Another spot** *(opens the "Where are we ordering?" form)*
 * Button: **Cancel party**
 
-**Once voting closes with a clear winner, you see the results:**
+**Once voting closes with a clear winner, you see the results and decide before anyone orders:**
 > Voting results:
 > {breakdown of votes per suggestion}
 > Winner: *{winner}*
+> Go with it, choose another spot, or cancel the party?
+
+* Button: **Go with {winner}**
+* Button: **Another spot** *(opens the "Where are we ordering?" form)*
+* Button: **Cancel party**
 
 **If two or more spots tie, you get this instead, with a button for each tied spot, plus "Another spot" and "Cancel party":**
 > Voting results:
@@ -213,9 +225,11 @@ You get things going by typing `/matcha-party` in your DM with the bot (it only 
 **"Place your order" opens a form:**
 * Title: **Your matcha order**
 * Field: **Drink name** (up to 100 characters)
+* Field: **Size (optional)** (up to 100 characters)
 * Field: **Milk type** (up to 100 characters)
 * Field: **With or without cream?** (choices: **With cream** / **Without cream**)
-* Field: **Sweetness level** (choices: **Sweet** / **Less Sweet** / **No Sweet**)
+* Field: **Sweetness level** (choices: **Default** / **Sweet** / **Less Sweet** / **No Sweet**)
+* Field: **Comments (optional)** (up to 200 characters)
 * Submit button: **Submit**
 
 **Confirmation shown right after they submit their order:**
@@ -229,7 +243,9 @@ You get things going by typing `/matcha-party` in your DM with the bot (it only 
 *(Ordering closes when the time is up, or as soon as everyone who's in has ordered. After that, changes aren't possible.)*
 
 **When ordering closes, the buttons disappear. The order message gets a small grey line showing their order:**
-> Ordering has closed · Your order: *{drink}, {milk}, {sweetness}, {cream}*
+> Ordering has closed · Your order: *{order}*
+
+*(An order reads like "Iced matcha latte, Large, Oat, Default sweetness, Without cream · Comments: extra ice". Size and comments only show if they filled them in, and "Default" shows as "Default sweetness".)*
 > Ordering has closed · You didn't order
 
 **And their "Got your order" message gets:**
@@ -277,7 +293,7 @@ You get things going by typing `/matcha-party` in your DM with the bot (it only 
 > {host} is sticking with *{spot}*. You can still place your order, or tap Can't make it.
 
 **If you tap "Switch to this one":** *(grey line)*
-> You switched to *{spot}* · Orders were reset and everyone has 5 more minutes
+> You switched to *{spot}* · Orders were reset and everyone has {minutes} more
 
 **Everyone who's in gets this, followed by a fresh order message for the new spot:**
 > Change of plans: {host} switched the party to *{spot}*. If you already ordered, please order again below.
@@ -299,7 +315,7 @@ You get things going by typing `/matcha-party` in your DM with the bot (it only 
 > Order summary for *{spot}*:
 
 **Then one line per person who ordered:**
-> • *{name}*: {drink}, {milk}, {sweetness}, {cream}
+> • *{name}*: {order}
 
 **If anyone never ordered, this gets added:**
 > Didn't order: {names}
@@ -309,18 +325,26 @@ You get things going by typing `/matcha-party` in your DM with the bot (it only 
 
 **Below the summary, buttons for you:**
 * Button: **I placed the order ✅**
-* Button: **There's a problem** *(also on the ETA question and on "Tap below when the order arrives")*
+* Button: **There's a problem** *(also on the bills question, the ETA question and "Tap below when the order arrives")*
 
 **"There's a problem" opens a form:**
 * Title: **What happened?**
 * Field: **Tell everyone what happened** (up to 300 characters)
+* Field: **What should happen to the party?** (choices: **Cancel the party** / **Carry on**, you have to pick one)
 * Submit button: **Send**
 
-**Everyone who's in then gets:**
+**If you choose "Carry on", everyone who's in gets:**
 > Update from {host} about the *{spot}* order: {what you wrote}
 
-**And you get (the party carries on, so the buttons stay):**
+**And you get (the buttons stay):**
 > Sent to everyone in the party. The party carries on, so you can still use the buttons above.
+
+**If you choose "Cancel the party", everyone who's in gets:**
+> Update from {host} about the *{spot}* order: {what you wrote}
+> The party has been cancelled.
+
+**And you get (your buttons are replaced by "This party has closed"):**
+> Sent to everyone and cancelled the party. Run /matcha-party whenever you want to start another.
 
 **After you tap it:** *(grey line)*
 > You placed the order
@@ -330,6 +354,23 @@ You get things going by typing `/matcha-party` in your DM with the bot (it only 
 
 **Meanwhile, everyone who's in gets:**
 > Heads up, {host} just sent off the Matcha Party order!
+
+**Then you're asked about bills (skipped if nobody ordered):**
+> Want to send everyone their bill? I'll message each person privately.
+
+* Button: **Send bills**
+* Button: **Skip**
+
+**"Send bills" opens a form:**
+* Title: **Send bills**
+* One field per person who ordered: **{name} (SAR)**, with the hint "Enter 0 if they don't owe anything"
+* Submit button: **Send**
+
+**Each person with an amount above 0 gets this privately:**
+> You owe {host} {amount} SAR for your order from *{spot}*
+
+**Under the bills question:** *(grey line)*
+> Bills sent: *{name} {amount} SAR, ...* / No bills sent
 
 **Then you're asked:**
 > Got an ETA for when it'll arrive?
@@ -362,7 +403,7 @@ You get things going by typing `/matcha-party` in your DM with the bot (it only 
 
 ## 6. If things go quiet or someone types in the chat
 
-**If you don't respond for 60 minutes at a step that's waiting on you (picking people, picking the spot, confirming the order, or the ETA), the party closes and you get:**
+**If you don't respond for 60 minutes at a step that's waiting on you (picking people, picking the spot, confirming the order, bills, or the ETA), the party closes and you get:**
 > No reply for 60 minutes, so I've closed this Matcha Party. Run /matcha-party to start another.
 
 **Everyone invited or in gets (unless the order was already sent):**

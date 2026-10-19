@@ -53,6 +53,7 @@ SPOT_MAX_LEN        = 60
 ORDER_FIELD_MAX_LEN = 100
 ETA_MAX_LEN         = 100
 PROBLEM_MAX_LEN     = 300
+COMMENTS_MAX_LEN    = 200
 # After the host gives an ETA, how long the "The order arrived" button stays
 # live before the party is closed quietly.
 ARRIVAL_WAIT_HOURS = 3
@@ -63,20 +64,21 @@ ARRIVAL_WAIT_HOURS = 3
 HOST_IDLE_MINUTES = 60
 
 # Test mode (MATCHA_TEST_MODE=1 in .env or the environment): lets a host
-# invite themselves, so one person can play host and invitee, and shortens
-# the windows so a full run takes a few minutes, and switches off the
-# onboarding relay (no /start, no forwarding to or from the teammate).
-# Messages still say "5 minutes"/"3 minutes". Leave it off for real use.
+# invite themselves, so one person can play host and invitee, and switches
+# off the onboarding relay (no /start, no forwarding to or from the
+# teammate). For a quick run, set each step to 1 minute on the invite form.
+# Leave it off for real use.
 TEST_MODE = os.getenv("MATCHA_TEST_MODE") == "1"
 
 # Who can start a party: comma-separated Slack user IDs in MATCHA_ALLOWED_HOSTS
 # (e.g. for a trial run). Unset or empty means everyone can. Anyone can still
 # be invited either way.
 ALLOWED_HOSTS = {u.strip() for u in os.getenv("MATCHA_ALLOWED_HOSTS", "").split(",") if u.strip()}
-RSVP_SECONDS       = 60 if TEST_MODE else 5 * 60
-SUGGESTION_SECONDS = 60 if TEST_MODE else 5 * 60
-VOTE_SECONDS       = 30 if TEST_MODE else 3 * 60
-ORDER_SECONDS      = 60 if TEST_MODE else 5 * 60
+
+# How long each timed step lasts. The host sets these on the invite form;
+# these are the values it starts with.
+DEFAULT_MINUTES  = {"rsvp": 5, "suggestion": 5, "vote": 3, "order": 5}
+MAX_STEP_MINUTES = 60
 
 # Slack handlers and the timer thread all read-modify-write party_state.json,
 # so every one of them runs under this lock (see @locked). Re-entrant because
@@ -169,7 +171,18 @@ def default_party(host_id: str) -> dict:
         "uid": uuid.uuid4().hex,  # unique per party, carried on buttons so old ones can't touch a newer party
         "timer": None,           # {"kind", "due" (epoch secs), ...}, see set_timer / run_due_timers
         "ghosts": {},            # user_id -> epoch secs: busy invitees shown as invited, auto-declined then (never DMed)
+        "minutes": dict(DEFAULT_MINUTES),  # step -> minutes, as the host set them on the invite form
     }
+
+
+def step_seconds(party: dict, step: str) -> int:
+    return party.get("minutes", {}).get(step, DEFAULT_MINUTES[step]) * 60
+
+
+def step_minutes_text(party: dict, step: str) -> str:
+    """How long a step lasts, as text ("1 minute", "5 minutes") for messages."""
+    minutes = party.get("minutes", {}).get(step, DEFAULT_MINUTES[step])
+    return "1 minute" if minutes == 1 else f"{minutes} minutes"
 
 
 def get_party_for_user(state: dict, user_id: str):
@@ -384,8 +397,7 @@ def order_line(party: dict, user_id: str) -> str:
     order = party.get("orders", {}).get(user_id)
     if not order:
         return msg.LINE_ORDERING_CLOSED_NONE
-    details = f"{order['drink']}, {order['milk']}, {order['sweetness']}, {order['cream']}"
-    return msg.LINE_ORDERING_CLOSED_ORDERED.format(order=details)
+    return msg.LINE_ORDERING_CLOSED_ORDERED.format(order=order_details(order))
 
 
 def close_all_live(party: dict, line: str) -> None:
@@ -557,12 +569,27 @@ def handle_pick_people(ack, body, action, client):
         "private_metadata": party_ref(ref["pid"], party, msg_channel=body["channel"]["id"], msg_ts=body["message"]["ts"]),
         "title": {"type": "plain_text", "text": msg.INVITE_MODAL_TITLE},
         "submit": {"type": "plain_text", "text": msg.INVITE_MODAL_SUBMIT},
+        # The step times below the people picker also make the form tall
+        # enough for the picker's list to show several names at once.
         "blocks": [{
             "type": "input",
             "block_id": "invitees_block",
             "label": {"type": "plain_text", "text": msg.INVITE_MODAL_LABEL},
-            "element": {"type": "multi_users_select", "action_id": "invitees_input"},
-        }],
+            "element": {"type": "multi_users_select", "action_id": "invitees_input",
+                        "placeholder": {"type": "plain_text", "text": msg.INVITE_MODAL_PLACEHOLDER}},
+        }, {
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": msg.STEP_TIMES_HEADER},
+        }] + [{
+            "type": "input",
+            "block_id": f"{step}_minutes_block",
+            "label": {"type": "plain_text", "text": label},
+            **({"hint": {"type": "plain_text", "text": msg.STEP_TIMES_SUGGEST_HINT}} if step in ("suggestion", "vote") else {}),
+            "element": {"type": "number_input", "action_id": "minutes_input", "is_decimal_allowed": False,
+                        "min_value": "1", "max_value": str(MAX_STEP_MINUTES),
+                        "initial_value": str(DEFAULT_MINUTES[step])},
+        } for step, label in (("rsvp", msg.STEP_TIMES_RSVP), ("suggestion", msg.STEP_TIMES_SUGGESTION),
+                              ("vote", msg.STEP_TIMES_VOTE), ("order", msg.STEP_TIMES_ORDER))],
     })
 
 
@@ -581,6 +608,14 @@ def handle_invite_submission(ack, body, view, client):
     party = resolve_party(state, meta)
     if not party or party["phase"] != "awaiting_invitees":
         return
+    values = view["state"]["values"]
+    minutes = party.setdefault("minutes", dict(DEFAULT_MINUTES))
+    for step in DEFAULT_MINUTES:
+        raw = values.get(f"{step}_minutes_block", {}).get("minutes_input", {}).get("value")
+        try:
+            minutes[step] = min(max(int(raw), 1), MAX_STEP_MINUTES)
+        except (TypeError, ValueError):
+            minutes[step] = DEFAULT_MINUTES[step]
     names = invite_people(party, state, people)
     if names:
         retext_live(party, meta["msg_ts"], None)
@@ -634,10 +669,10 @@ def invite_people(party: dict, state: dict, people: list) -> str:
     party["invited"] = invited_names
     party["pending_rsvps"] = dict(invited_names)
     party["phase"] = "awaiting_rsvps"
-    set_timer(party, "rsvp", RSVP_SECONDS)
+    set_timer(party, "rsvp", step_seconds(party, "rsvp"))
     save_state(state)
 
-    text = msg.RSVP_SENT_TO_HOST.format(names=", ".join(invited_names.values()))
+    text = msg.RSVP_SENT_TO_HOST.format(names=", ".join(invited_names.values()), minutes=step_minutes_text(party, "rsvp"))
     dm_live(party, "host", host_id, text, _blocks(text, [_cancel_btn(host_id, party)]))
     save_state(state)
     if unreachable:
@@ -684,7 +719,7 @@ def on_host_idle(party_id: str, phase: str) -> None:
     dm(party["host_id"], msg.PARTY_TIMED_OUT.format(minutes=HOST_IDLE_MINUTES))
     # Once the order's been sent, there's nothing for invitees to hear, the
     # host just never gave an ETA.
-    if phase != "awaiting_eta":
+    if phase not in ("awaiting_bills", "awaiting_eta"):
         for uid in guests:
             dm(uid, msg.PARTY_TIMED_OUT_NOTICE.format(host=f"<@{party['host_id']}>"))
     print(f"[{datetime.now():%H:%M}] Matcha Party closed, host idle at '{phase}'.")
@@ -824,15 +859,15 @@ def handle_spot_suggest(ack, body, action, client):
     if not party or party["phase"] != "awaiting_spot_method":
         return
     party["phase"] = "collecting_suggestions"
-    set_timer(party, "suggestion", SUGGESTION_SECONDS)
+    set_timer(party, "suggestion", step_seconds(party, "suggestion"))
     _close_in_place(body, msg.LINE_HOST_LET_THEM_SUGGEST, party)
     save_state(state)
-    prompt_text = msg.SUGGESTION_PROMPT.format(host=f"<@{party['host_id']}>")
+    prompt_text = msg.SUGGESTION_PROMPT.format(host=f"<@{party['host_id']}>", minutes=step_minutes_text(party, "suggestion"))
     prompt_blocks = _blocks(prompt_text, [_btn(msg.BUTTON_SUGGEST_SPOT, "party_suggest_spot", party_ref(ref["pid"], party), style="primary")])
     for uid in party["accepted"]:
         dm_live(party, "suggest_prompt", uid, prompt_text, prompt_blocks)
     save_state(state)
-    print(f"[{datetime.now():%H:%M}] Suggestion window opened for a Matcha Party (5 min).")
+    print(f"[{datetime.now():%H:%M}] Suggestion window opened for a Matcha Party ({step_minutes_text(party, 'suggestion')}).")
 
 
 @app.action("party_suggest_spot")
@@ -1022,7 +1057,8 @@ def on_suggestion_window_end(party_id: str) -> None:
         party["phase"] = "awaiting_host_fallback_spot"
         set_host_idle_timer(party)
         save_state(state)
-        dm_live(party, "host", party["host_id"], msg.NO_SUGGESTIONS_FALLBACK, _blocks(msg.NO_SUGGESTIONS_FALLBACK, [
+        text = msg.NO_SUGGESTIONS_FALLBACK.format(minutes=step_minutes_text(party, "suggestion"))
+        dm_live(party, "host", party["host_id"], text, _blocks(text, [
             _btn(msg.BUTTON_PICK_SPOT, "party_pick_spot", party_ref(party_id, party), style="primary"),
             _cancel_btn(party_id, party),
         ]))
@@ -1031,7 +1067,7 @@ def on_suggestion_window_end(party_id: str) -> None:
         return
 
     party["phase"] = "collecting_votes"
-    set_timer(party, "vote", VOTE_SECONDS)
+    set_timer(party, "vote", step_seconds(party, "vote"))
     save_state(state)
 
     suggestions = party["suggestion_order"]
@@ -1039,14 +1075,15 @@ def on_suggestion_window_end(party_id: str) -> None:
         {"type": "button", "text": {"type": "plain_text", "text": s}, "action_id": f"party_vote_{i}", "value": party_ref(party_id, party, spot=s)}
         for i, s in enumerate(suggestions)
     ]
+    header = msg.VOTE_PROMPT_HEADER.format(minutes=step_minutes_text(party, "vote"))
     # Slack allows at most 25 buttons per actions block.
-    blocks = [{"type": "section", "text": {"type": "mrkdwn", "text": msg.VOTE_PROMPT_HEADER}}] + [
+    blocks = [{"type": "section", "text": {"type": "mrkdwn", "text": header}}] + [
         {"type": "actions", "elements": buttons[i:i + 25]} for i in range(0, len(buttons), 25)
     ]
     for uid in party["accepted"]:
-        dm_live(party, "vote", uid, msg.VOTE_PROMPT_HEADER, blocks)
+        dm_live(party, "vote", uid, header, blocks)
     save_state(state)
-    print(f"[{datetime.now():%H:%M}] Voting window opened for a Matcha Party (3 min): {suggestions}")
+    print(f"[{datetime.now():%H:%M}] Voting window opened for a Matcha Party ({step_minutes_text(party, 'vote')}): {suggestions}")
 
 
 @app.action(re.compile(r"^party_vote_\d+$"))
@@ -1080,7 +1117,8 @@ def on_vote_window_end(party_id: str) -> None:
         party["phase"] = "awaiting_host_fallback_spot"
         set_host_idle_timer(party)
         save_state(state)
-        _ask_host_to_pick(party_id, party, msg.NO_VOTES_FALLBACK, party.get("suggestion_order", []))
+        _ask_host_to_pick(party_id, party, msg.NO_VOTES_FALLBACK.format(minutes=step_minutes_text(party, "vote")),
+                          party.get("suggestion_order", []))
         save_state(state)
         print(f"[{datetime.now():%H:%M}] No votes came in, asked the host what to do.")
         return
@@ -1105,15 +1143,28 @@ def on_vote_window_end(party_id: str) -> None:
         print(f"[{datetime.now():%H:%M}] Matcha Party vote tied: {tied}, asked the host to pick.")
         return
 
+    # A clear winner still needs the host's OK before anyone orders: they can
+    # go with it, choose another spot, or cancel.
     winner = tied[0]
-    dm(party["host_id"], msg.VOTE_RESULTS_TO_HOST.format(breakdown=breakdown, winner=winner))
-    print(f"[{datetime.now():%H:%M}] Matcha Party voting results: {tally}, winner: {winner}")
-    announce_spot(party_id, winner, party, state)
+    party["phase"] = "awaiting_spot_approval"
+    set_host_idle_timer(party)
+    save_state(state)
+    _ask_host_to_pick(party_id, party, msg.VOTE_RESULTS_TO_HOST.format(breakdown=breakdown, winner=winner),
+                      [winner], go_with=True)
+    save_state(state)
+    print(f"[{datetime.now():%H:%M}] Matcha Party voting results: {tally}, winner: {winner}, asked the host to approve.")
 
 
-def _ask_host_to_pick(party_id: str, party: dict, text: str, spots: list) -> None:
-    """Host message with a button per spot, plus "Another spot" and Cancel."""
-    buttons = [_btn(s, f"party_pick_listed_{i}", party_ref(party_id, party, spot=s)) for i, s in enumerate(spots)]
+# Steps where the host settles the spot from a message listing spots.
+_HOST_PICK_PHASES = ("awaiting_tiebreak", "awaiting_host_fallback_spot", "awaiting_spot_approval")
+
+
+def _ask_host_to_pick(party_id: str, party: dict, text: str, spots: list, go_with: bool = False) -> None:
+    """Host message with a button per spot, plus "Another spot" and Cancel.
+    go_with labels the single spot's button "Go with <spot>"."""
+    buttons = [_btn(msg.BUTTON_GO_WITH.format(spot=s) if go_with else s, f"party_pick_listed_{i}",
+                    party_ref(party_id, party, spot=s), style="primary" if go_with else None)
+               for i, s in enumerate(spots)]
     buttons += [_btn(msg.BUTTON_ANOTHER_SPOT, "party_pick_spot", party_ref(party_id, party)), _cancel_btn(party_id, party)]
     dm_live(party, "host", party["host_id"], text, _blocks(text, buttons))
 
@@ -1125,7 +1176,7 @@ def handle_pick_listed(ack, body, action, client):
     ref = json.loads(action["value"])
     state = load_state()
     party = resolve_party(state, ref)
-    if (not party or party["phase"] not in ("awaiting_tiebreak", "awaiting_host_fallback_spot")
+    if (not party or party["phase"] not in _HOST_PICK_PHASES
             or party["host_id"] != body["user"]["id"]):
         _close_in_place(body, msg.LINE_HOST_ALREADY_SETTLED)
         return
@@ -1142,7 +1193,7 @@ def handle_pick_spot_button(ack, body, action, client):
     ref = json.loads(action["value"])
     state = load_state()
     party = resolve_party(state, ref)
-    if (not party or party["phase"] not in ("awaiting_tiebreak", "awaiting_host_fallback_spot")
+    if (not party or party["phase"] not in _HOST_PICK_PHASES
             or party["host_id"] != body["user"]["id"]):
         _close_in_place(body, msg.LINE_HOST_ALREADY_SETTLED)
         return
@@ -1156,7 +1207,6 @@ _TEXT_MODALS = {
     "spot":       (msg.SPOT_MODAL_TITLE, msg.SPOT_MODAL_LABEL, SPOT_MAX_LEN),
     "suggestion": (msg.SUGGEST_MODAL_TITLE, msg.SPOT_MODAL_LABEL, SPOT_MAX_LEN),
     "eta":        (msg.ETA_MODAL_TITLE, msg.ETA_MODAL_LABEL, ETA_MAX_LEN),
-    "problem":    (msg.PROBLEM_MODAL_TITLE, msg.PROBLEM_MODAL_LABEL, PROBLEM_MAX_LEN),
 }
 
 
@@ -1201,20 +1251,11 @@ def handle_text_modal(ack, body, view, client):
         return  # the prompt keeps its button, for more suggestions
 
     if purpose == "spot":
-        if not is_host or phase not in ("awaiting_spot_name", "awaiting_host_fallback_spot", "awaiting_tiebreak"):
+        if not is_host or phase not in ("awaiting_spot_name",) + _HOST_PICK_PHASES:
             return
         retext_live(party, meta["msg_ts"], None)
         _close_message(client, meta["msg_channel"], meta["msg_ts"], meta["msg_text"], msg.LINE_HOST_SPOT.format(spot=text))
         handle_host_spot_name(uid, text, party, state)
-    elif purpose == "problem":
-        # The party carries on: the message with the button stays as it is.
-        if not is_host or phase not in _PROBLEM_PHASES:
-            return
-        notice = msg.PROBLEM_NOTICE.format(host=f"<@{party['host_id']}>", spot=party.get("spot_name", "the spot"), problem=text)
-        for guest in party["accepted"]:
-            dm(guest, notice)
-        dm(uid, msg.PROBLEM_SENT)
-        print(f"[{datetime.now():%H:%M}] Host reported a problem with the Matcha Party order.")
     elif purpose == "eta":
         if not is_host or phase != "awaiting_eta":
             return
@@ -1245,16 +1286,16 @@ def handle_host_spot_name(user_id: str, message: str, party: dict, state: dict) 
 # ── Matcha Party: ordering ────────────────────────────────────────────────────
 
 def announce_spot(party_id: str, spot_name: str, party: dict, state: dict, host_picked: bool = False) -> None:
-    """Announce the spot and open a 5-minute order window. host_picked adds a
+    """Announce the spot and open the order window. host_picked adds a
     "Suggest somewhere else" button, since nobody else got a say in the spot."""
     party["spot_name"] = spot_name
     party["phase"] = "awaiting_orders"
     party["order_round"] = party.get("order_round", 0) + 1
     order_round = party["order_round"]
-    deadline_dt = datetime.now(RIYADH_TZ) + timedelta(seconds=ORDER_SECONDS)
+    deadline_dt = datetime.now(RIYADH_TZ) + timedelta(seconds=step_seconds(party, "order"))
     deadline_str = deadline_dt.strftime("%H:%M")
     party["order_deadline"] = deadline_dt.isoformat()
-    set_timer(party, "order", ORDER_SECONDS, round=order_round)
+    set_timer(party, "order", step_seconds(party, "order"), round=order_round)
     save_state(state)
 
     text = msg.SPOT_ANNOUNCEMENT.format(host=f"<@{party['host_id']}>", spot=spot_name, deadline=deadline_str)
@@ -1302,21 +1343,39 @@ def handle_place_order(ack, body, action, client):
     # Changing an order: open the form filled in with what they sent before.
     existing = party["orders"].get(uid) or {}
     cream_value = "with" if existing.get("cream") == msg.CREAM_WITH else "without"
-    sweet_value = {msg.SWEETNESS_SWEET: "sweet", msg.SWEETNESS_LESS_SWEET: "less_sweet",
-                   msg.SWEETNESS_NO_SWEET: "no_sweet"}.get(existing.get("sweetness"))
+    sweet_value = next((k for k, v in _SWEETNESS.items() if v == existing.get("sweetness")), None)
     view = _order_modal_view(party_ref(party_id, party, round=party["order_round"], user=uid))
     if existing:
         for block in view["blocks"]:
             el = block["element"]
-            if block["block_id"] == "drink_block":
-                el["initial_value"] = existing["drink"]
-            elif block["block_id"] == "milk_block":
-                el["initial_value"] = existing["milk"]
-            elif block["block_id"] == "cream_block":
+            field = block["block_id"][:-len("_block")]
+            if field in ("drink", "size", "milk", "comments") and existing.get(field):
+                el["initial_value"] = existing[field]
+            elif field == "cream":
                 el["initial_option"] = next(o for o in el["options"] if o["value"] == cream_value)
-            elif block["block_id"] == "sweetness_block" and sweet_value:
+            elif field == "sweetness" and sweet_value:
                 el["initial_option"] = next(o for o in el["options"] if o["value"] == sweet_value)
     client.views_open(trigger_id=body["trigger_id"], view=view)
+
+
+# Sweetness choices on the order form: value -> what's stored and shown.
+_SWEETNESS = {
+    "default":    msg.SWEETNESS_DEFAULT_VALUE,
+    "sweet":      msg.SWEETNESS_SWEET,
+    "less_sweet": msg.SWEETNESS_LESS_SWEET,
+    "no_sweet":   msg.SWEETNESS_NO_SWEET,
+}
+
+
+def order_details(order: dict) -> str:
+    """One order as text: drink, size (if given), milk, sweetness, cream,
+    then any comments."""
+    parts = [order["drink"]] + ([order["size"]] if order.get("size") else [])
+    parts += [order["milk"], order["sweetness"], order["cream"]]
+    text = ", ".join(parts)
+    if order.get("comments"):
+        text += msg.ORDER_COMMENTS.format(comments=" ".join(order["comments"].split()))
+    return text
 
 
 def _order_modal_view(metadata: str) -> dict:
@@ -1332,6 +1391,13 @@ def _order_modal_view(metadata: str) -> dict:
                 "block_id": "drink_block",
                 "label": {"type": "plain_text", "text": msg.DRINK_LABEL},
                 "element": {"type": "plain_text_input", "action_id": "drink_input", "max_length": ORDER_FIELD_MAX_LEN},
+            },
+            {
+                "type": "input",
+                "block_id": "size_block",
+                "optional": True,
+                "label": {"type": "plain_text", "text": msg.SIZE_LABEL},
+                "element": {"type": "plain_text_input", "action_id": "size_input", "max_length": ORDER_FIELD_MAX_LEN},
             },
             {
                 "type": "input",
@@ -1360,11 +1426,20 @@ def _order_modal_view(metadata: str) -> dict:
                     "type": "radio_buttons",
                     "action_id": "sweetness_input",
                     "options": [
+                        {"text": {"type": "plain_text", "text": msg.SWEETNESS_DEFAULT}, "value": "default"},
                         {"text": {"type": "plain_text", "text": msg.SWEETNESS_SWEET}, "value": "sweet"},
                         {"text": {"type": "plain_text", "text": msg.SWEETNESS_LESS_SWEET}, "value": "less_sweet"},
                         {"text": {"type": "plain_text", "text": msg.SWEETNESS_NO_SWEET}, "value": "no_sweet"},
                     ],
                 },
+            },
+            {
+                "type": "input",
+                "block_id": "comments_block",
+                "optional": True,
+                "label": {"type": "plain_text", "text": msg.COMMENTS_LABEL},
+                "element": {"type": "plain_text_input", "action_id": "comments_input", "multiline": True,
+                            "max_length": COMMENTS_MAX_LEN},
             },
         ],
     }
@@ -1393,21 +1468,20 @@ def handle_order_submission(ack, body, view, client):
     cream = msg.CREAM_WITH if cream_option and cream_option["value"] == "with" else msg.CREAM_WITHOUT
     sweetness_option = values["sweetness_block"]["sweetness_input"].get("selected_option")
     sweetness_value = sweetness_option["value"] if sweetness_option else None
-    sweetness = {
-        "sweet": msg.SWEETNESS_SWEET,
-        "less_sweet": msg.SWEETNESS_LESS_SWEET,
-        "no_sweet": msg.SWEETNESS_NO_SWEET,
-    }.get(sweetness_value, msg.SWEETNESS_SWEET)
+    sweetness = _SWEETNESS.get(sweetness_value, msg.SWEETNESS_DEFAULT_VALUE)
+    size = (values.get("size_block", {}).get("size_input", {}).get("value") or "").strip()
+    comments = (values.get("comments_block", {}).get("comments_input", {}).get("value") or "").strip()
 
     changed = user_id in party["orders"]
-    party["orders"][user_id] = {"drink": drink, "milk": milk, "cream": cream, "sweetness": sweetness}
+    party["orders"][user_id] = {"drink": drink, "size": size, "milk": milk, "cream": cream,
+                                "sweetness": sweetness, "comments": comments}
     save_state(state)
     text = msg.ORDER_UPDATED_CONFIRMATION if changed else msg.ORDER_RECEIVED_CONFIRMATION
     dm_live(party, "order_confirm", user_id, text, _blocks(text, [
         _btn(msg.BUTTON_CHANGE_ORDER, "party_change_order", party_ref(party_id, party, round=party["order_round"])),
     ]))
     save_state(state)
-    print(f"[{datetime.now():%H:%M}] Got order from {get_display_name(user_id)}: {drink}, {milk}, {sweetness}, {cream}")
+    print(f"[{datetime.now():%H:%M}] Got order from {get_display_name(user_id)}: {order_details(party['orders'][user_id])}")
 
     # Everyone's in, no need to wait out the rest of the window.
     if set(party["orders"].keys()) >= set(party["accepted"].keys()):
@@ -1558,7 +1632,7 @@ def handle_switch_spot(ack, body, action, client):
     party["orders"] = {}
     close_live(party, "order", msg.LINE_SPOT_CHANGED)
     close_live(party, "order_confirm", msg.LINE_SPOT_CHANGED)
-    _close_in_place(body, msg.LINE_HOST_SWITCHED.format(spot=new_spot), party)
+    _close_in_place(body, msg.LINE_HOST_SWITCHED.format(spot=new_spot, minutes=step_minutes_text(party, "order")), party)
     # Any other "suggested somewhere else" messages are about the old spot now.
     close_live(party, "host_alt", msg.LINE_HOST_SUGGESTION_INACTIVE)
     notice = msg.SPOT_CHANGED_NOTICE.format(host=f"<@{party['host_id']}>", spot=new_spot)
@@ -1598,10 +1672,7 @@ def send_order_summary(party_id: str, party: dict, state: dict) -> None:
     for uid, name in party["accepted"].items():
         order = party["orders"].get(uid)
         if order:
-            lines.append(msg.ORDER_SUMMARY_LINE.format(
-                name=name, drink=order["drink"], milk=order["milk"],
-                sweetness=order["sweetness"], cream=order["cream"],
-            ))
+            lines.append(msg.ORDER_SUMMARY_LINE.format(name=name, order=order_details(order)))
     missing = [name for uid, name in party["accepted"].items() if uid not in party["orders"]]
     if missing:
         lines.append(msg.ORDER_SUMMARY_MISSING.format(names=", ".join(missing)))
@@ -1637,6 +1708,22 @@ def handle_confirm_sent(ack, body, action, client):
     for uid in party["accepted"]:
         dm(uid, sent_text)
 
+    if not _bill_guests(party):
+        ask_eta(party_id, party, state)
+        print(f"[{datetime.now():%H:%M}] Order confirmed sent, notified invitees, asked host for an ETA.")
+        return
+    party["phase"] = "awaiting_bills"
+    set_host_idle_timer(party)
+    dm_live(party, "host", party["host_id"], msg.ASK_BILLS, _blocks(msg.ASK_BILLS, [
+        _btn(msg.BUTTON_SEND_BILLS, "party_send_bills", party_ref(party_id, party), style="primary"),
+        _btn(msg.BUTTON_SKIP_BILLS, "party_skip_bills", party_ref(party_id, party)),
+        _problem_btn(party_id, party),
+    ]))
+    save_state(state)
+    print(f"[{datetime.now():%H:%M}] Order confirmed sent, notified invitees, asked host about bills.")
+
+
+def ask_eta(party_id: str, party: dict, state: dict) -> None:
     party["phase"] = "awaiting_eta"
     set_host_idle_timer(party)
     dm_live(party, "host", party["host_id"], msg.ASK_ETA, _blocks(msg.ASK_ETA, [
@@ -1645,12 +1732,91 @@ def handle_confirm_sent(ack, body, action, client):
         _problem_btn(party_id, party),
     ]))
     save_state(state)
-    print(f"[{datetime.now():%H:%M}] Order confirmed sent, notified invitees, asked host for an ETA.")
+
+
+# ── Matcha Party: bills ───────────────────────────────────────────────────────
+
+def _bill_guests(party: dict) -> dict:
+    """user_id -> name of everyone still in who ordered, the people a bill can go to."""
+    return {uid: name for uid, name in party["accepted"].items() if uid in party["orders"]}
+
+
+def _format_amount(value: float) -> str:
+    return f"{value:.2f}".rstrip("0").rstrip(".")
+
+
+@app.action("party_send_bills")
+@locked
+def handle_send_bills_button(ack, body, action, client):
+    ack()
+    ref = json.loads(action["value"])
+    state = load_state()
+    party = resolve_party(state, ref)
+    if not party or party["phase"] != "awaiting_bills" or party["host_id"] != body["user"]["id"]:
+        return
+    client.views_open(trigger_id=body["trigger_id"], view={
+        "type": "modal",
+        "callback_id": "party_bills_modal",
+        "private_metadata": party_ref(ref["pid"], party, msg_channel=body["channel"]["id"], msg_ts=body["message"]["ts"]),
+        "title": {"type": "plain_text", "text": msg.BILLS_MODAL_TITLE},
+        "submit": {"type": "plain_text", "text": msg.MODAL_SUBMIT_SEND},
+        "blocks": [{
+            "type": "input",
+            "block_id": f"bill_{uid}",
+            "label": {"type": "plain_text", "text": msg.BILLS_MODAL_LABEL.format(name=name)[:2000]},
+            "hint": {"type": "plain_text", "text": msg.BILLS_MODAL_HINT},
+            "element": {"type": "number_input", "action_id": "amount_input", "is_decimal_allowed": True,
+                        "min_value": "0"},
+        } for uid, name in _bill_guests(party).items()],
+    })
+
+
+@app.view("party_bills_modal")
+@locked
+def handle_bills_submission(ack, body, view, client):
+    ack()
+    meta = json.loads(view["private_metadata"])
+    state = load_state()
+    party = resolve_party(state, meta)
+    if not party or party["phase"] != "awaiting_bills" or party["host_id"] != body["user"]["id"]:
+        return
+    guests = _bill_guests(party)
+    sent = []
+    for block_id, block in view["state"]["values"].items():
+        uid = block_id[len("bill_"):]
+        try:
+            amount = float(block["amount_input"]["value"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        # 0 means nothing to pay (e.g. they paid already), so no message.
+        if uid not in guests or amount <= 0:
+            continue
+        dm(uid, msg.BILL_NOTICE.format(host=f"<@{party['host_id']}>", amount=_format_amount(amount),
+                                       spot=party.get("spot_name") or "the spot"))
+        sent.append(msg.BILL_SENT_ITEM.format(name=guests[uid], amount=_format_amount(amount)))
+    line = msg.LINE_HOST_BILLS_SENT.format(bills=", ".join(sent)) if sent else msg.LINE_HOST_NO_BILLS
+    retext_live(party, meta["msg_ts"], None)
+    _close_message(client, meta["msg_channel"], meta["msg_ts"], msg.ASK_BILLS, line)
+    print(f"[{datetime.now():%H:%M}] Host sent {len(sent)} Matcha Party bill(s).")
+    ask_eta(meta["pid"], party, state)
+
+
+@app.action("party_skip_bills")
+@locked
+def handle_skip_bills(ack, body, action, client):
+    ack()
+    ref = json.loads(action["value"])
+    state = load_state()
+    party = resolve_party(state, ref)
+    if not party or party["phase"] != "awaiting_bills" or party["host_id"] != body["user"]["id"]:
+        return
+    _close_in_place(body, msg.LINE_HOST_NO_BILLS, party)
+    ask_eta(ref["pid"], party, state)
 
 
 # Steps after the orders are in, where the host can report a problem (the
 # restaurant rejected the order, an item is out of stock, and so on).
-_PROBLEM_PHASES = ("awaiting_confirmation", "awaiting_eta", "awaiting_arrival")
+_PROBLEM_PHASES = ("awaiting_confirmation", "awaiting_bills", "awaiting_eta", "awaiting_arrival")
 
 
 @app.action("party_problem")
@@ -1663,7 +1829,61 @@ def handle_problem_button(ack, body, action, client):
     if not party or party["phase"] not in _PROBLEM_PHASES or party["host_id"] != body["user"]["id"]:
         _close_in_place(body, msg.LINE_PARTY_CLOSED)
         return
-    open_text_modal(client, body, ref["pid"], party, "problem")
+    client.views_open(trigger_id=body["trigger_id"], view={
+        "type": "modal",
+        "callback_id": "party_problem_modal",
+        "private_metadata": party_ref(ref["pid"], party),
+        "title": {"type": "plain_text", "text": msg.PROBLEM_MODAL_TITLE},
+        "submit": {"type": "plain_text", "text": msg.MODAL_SUBMIT_SEND},
+        "blocks": [{
+            "type": "input",
+            "block_id": "text_block",
+            "label": {"type": "plain_text", "text": msg.PROBLEM_MODAL_LABEL},
+            "element": {"type": "plain_text_input", "action_id": "text_input", "multiline": True,
+                        "max_length": PROBLEM_MAX_LEN},
+        }, {
+            # No default: the host has to choose, the party never just carries on.
+            "type": "input",
+            "block_id": "next_block",
+            "label": {"type": "plain_text", "text": msg.PROBLEM_NEXT_LABEL},
+            "element": {"type": "radio_buttons", "action_id": "next_input", "options": [
+                {"text": {"type": "plain_text", "text": msg.PROBLEM_NEXT_CANCEL}, "value": "cancel"},
+                {"text": {"type": "plain_text", "text": msg.PROBLEM_NEXT_CARRY_ON}, "value": "carry_on"},
+            ]},
+        }],
+    })
+
+
+@app.view("party_problem_modal")
+@locked
+def handle_problem_submission(ack, body, view, client):
+    ack()
+    meta = json.loads(view["private_metadata"])
+    uid = body["user"]["id"]
+    state = load_state()
+    party = resolve_party(state, meta)
+    if not party or party["phase"] not in _PROBLEM_PHASES or party["host_id"] != uid:
+        return
+    values = view["state"]["values"]
+    problem = " ".join(values["text_block"]["text_input"]["value"].split())
+    choice = (values["next_block"]["next_input"].get("selected_option") or {}).get("value")
+    host, spot = f"<@{party['host_id']}>", party.get("spot_name") or "the spot"
+    guests = list(party["accepted"])
+    if choice == "cancel":
+        release_party(state, meta["pid"])
+        save_state(state)
+        notice = msg.PROBLEM_NOTICE_CANCELLED.format(host=host, spot=spot, problem=problem)
+        for guest in guests:
+            dm(guest, notice)
+        dm(uid, msg.PROBLEM_CANCELLED)
+        print(f"[{datetime.now():%H:%M}] Host reported a problem and cancelled the Matcha Party.")
+        return
+    # Carrying on: the message with the button stays as it is.
+    notice = msg.PROBLEM_NOTICE.format(host=host, spot=spot, problem=problem)
+    for guest in guests:
+        dm(guest, notice)
+    dm(uid, msg.PROBLEM_SENT)
+    print(f"[{datetime.now():%H:%M}] Host reported a problem with the Matcha Party order, carrying on.")
 
 
 @app.action("party_add_eta")
