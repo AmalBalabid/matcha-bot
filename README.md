@@ -141,7 +141,7 @@ writes what happened and must choose: cancel (-> [released], everyone told) or c
 
 The host can cancel at any point: the red "Cancel party" button on their step messages, or `/matcha-party` while a party is running (which replies with a Cancel button). Typing "cancel" in the DM also still works. All of these go to `cancel_party`, which tears down (`release_party`) and notifies anyone who was invited or had already joined.
 
-**No typed input.** Every step is a button or a form (Slack modal): the invite list is a people picker (`multi_users_select`), and spot names, suggestions and the ETA use one-field forms (`open_text_modal` → `handle_text_modal`, keyed by `purpose`). Once a step's form is sent, the buttons on the message that opened it are removed (`_strip_buttons`). Anything typed in the DM during a party just gets a "use the buttons" nudge.
+**No typed input.** Every step is a button or a form (Slack modal): the invite list is a people picker (`multi_users_select`) in the start message itself, since inside a form Slack only shows two names before it has to be expanded (picks are also saved on the party by `handle_invitee_select`; Send invites opens a step-times form), and spot names, suggestions and the ETA use one-field forms (`open_text_modal` → `handle_text_modal`, keyed by `purpose`). Once a step's form is sent, the buttons on the message that opened it are removed (`_strip_buttons`). Anything typed in the DM during a party just gets a "use the buttons" nudge.
 
 **Changing an order.** After submitting, the invitee gets a "Change my order" button that reopens the order form filled in with their last order. It works until ordering closes, which happens at the deadline or as soon as every accepted invitee has ordered.
 

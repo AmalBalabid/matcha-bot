@@ -77,7 +77,7 @@ DM_HELLO = "Hi! Run /matcha-party here to start a group matcha order."
 # @-mention the invitees. Used in start_party_flow().
 ASK_INVITEES = (
     "Matcha Party started :matcha-salute:\n"
-    "Who wants to order matcha? Tap below to pick people"
+    "Who wants to order matcha? Pick people below, then tap Send invites"
 )
 
 
@@ -520,18 +520,20 @@ INVITEE_NOTHING_TO_REPLY = "No need to type anything here. Just use the buttons 
 
 # ── Matcha Party: buttons and forms ───────────────────────────────────────────
 
-# Button on ASK_INVITEES that opens the people picker. Used in start_party_flow().
-BUTTON_PICK_PEOPLE = "Pick people"
+# The people picker and button on ASK_INVITEES. Send invites opens a small
+# form for the step times. Used in start_party_flow().
+INVITE_PICKER_PLACEHOLDER = "Pick people"
+BUTTON_SEND_INVITES = "Send invites"
 
-# The people-picker form (Slack caps form titles at 24 characters). Used in
-# handle_pick_people().
+# The step-times form opened by BUTTON_SEND_INVITES, listing who's being
+# invited (Slack caps form titles at 24 characters). Used in
+# handle_send_invites().
 INVITE_MODAL_TITLE = "Invite to Matcha Party"
-INVITE_MODAL_LABEL = "Who's invited?"
 INVITE_MODAL_SUBMIT = "Send invites"
-INVITE_MODAL_PLACEHOLDER = "Type names to add people"
+INVITE_MODAL_PEOPLE = "Inviting: *{names}*"
 
-# The step times on the people-picker form, in minutes (1 to 60). Used in
-# handle_pick_people().
+# The step times on that form, in minutes (1 to 60). Used in
+# handle_send_invites().
 STEP_TIMES_HEADER = "*How long each step lasts* (in minutes)"
 STEP_TIMES_RSVP = "Answering the invite"
 STEP_TIMES_SUGGESTION = "Suggesting spots"
@@ -539,8 +541,8 @@ STEP_TIMES_VOTE = "Voting"
 STEP_TIMES_ORDER = "Ordering"
 STEP_TIMES_SUGGEST_HINT = "Only used if you let the group suggest"
 
-# Shown on the people-picker form if the host only picked themselves. Used in
-# handle_invite_submission().
+# Shown only to the host (under ASK_INVITEES) if they tap Send invites with
+# nobody picked, or only themselves. Used in handle_send_invites().
 INVITE_PICK_SOMEONE = "Pick at least one person other than you."
 
 # Red button on the host's messages (and on PARTY_ALREADY_IN_PROGRESS) that
@@ -681,16 +683,21 @@ BUTTON_SKIP_BILLS = "Skip"
 # handle_send_bills_button(), the label formatted with the person's name.
 BILLS_MODAL_TITLE = "Send bills"
 BILLS_MODAL_LABEL = "{name} (SAR)"
-BILLS_MODAL_HINT = "Enter 0 if they don't owe anything"
+BILLS_MODAL_HINT = "Enter 0 if it's on you"
 
 # DMed privately to each person with an amount above 0. Used in
 # handle_bills_submission(), formatted with the host's mention, the amount
 # and the spot.
 BILL_NOTICE = "You owe {host} {amount} SAR for your order from *{spot}*"
 
+# DMed privately instead of BILL_NOTICE when the host enters 0. Used in
+# handle_bills_submission(), formatted with the host's mention and the spot.
+BILL_FREE_NOTICE = "Your matcha from *{spot}* is on {host} :matcha-kitty:"
+
 # Grey line under ASK_BILLS once the host sends the form (BILL_SENT_ITEM per
-# person, joined with commas) or taps Skip. Used in handle_bills_submission()
+# person, or BILL_FREE_ITEM for 0, joined with commas) or taps Skip. Used in handle_bills_submission()
 # and handle_skip_bills().
 BILL_SENT_ITEM = "{name} {amount} SAR"
+BILL_FREE_ITEM = "{name} on you"
 LINE_HOST_BILLS_SENT = "Bills sent: *{bills}*"
 LINE_HOST_NO_BILLS = "No bills sent"

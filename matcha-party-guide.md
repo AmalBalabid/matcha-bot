@@ -15,14 +15,14 @@ For now, **only you and Amal can start a party**. Anyone else who tries is told 
 ## Starting a party (you're the host)
 
 1. Open your DM with **Matcha Bot** and type `/matcha-party`. It only works from your DM with the bot, not from a channel.
-2. Tap **Pick people** and choose who to invite. The same form lets you set how long each step lasts, in minutes (it starts at 5 to answer, 5 to suggest, 3 to vote and 5 to order, so you can leave it as is). Tap **Send invites**.
+2. Choose who to invite in the **Pick people** box right in the message, then tap **Send invites**. A small form opens where you can set how long each step lasts, in minutes (it starts at 5 to answer, 5 to suggest, 3 to vote and 5 to order, so you can leave it as is). Tap **Send invites** again to send them.
 3. Wait for people to answer. You'll see who's in, who can't make it, and who didn't answer.
 4. When at least one person is in, choose how to pick the spot:
    - **I've already decided**: type the spot name in the form.
    - **Let them suggest**: everyone who's in suggests spots, then votes. Each step moves on early once everyone has suggested (at least one spot) or voted. You then see the results and decide: **Go with** the winner, pick **Another spot**, or **Cancel party**. Nobody orders until you decide.
 5. Everyone who's in gets the order form.
 6. You get a summary of all the orders. Place the order with the restaurant, then tap **I placed the order ✅**.
-7. Tap **Send bills** to enter how much each person owes, in SAR. Each person gets a private message: *You owe @you 25 SAR for your order from Kultura*. Enter 0 for anyone who doesn't owe anything, or tap **Skip**.
+7. Tap **Send bills** to enter how much each person owes, in SAR. Each person gets a private message: *You owe @you 25 SAR for your order from Kultura*. Enter 0 for anyone whose matcha is on you, and they're told *Your matcha from Kultura is on @you*. Or tap **Skip** to send no bills.
 8. Add an ETA if you have one (**Add ETA**), or tap **No ETA**.
 9. When the matcha arrives, tap **The order arrived** and everyone gets told. That closes the party.
 
@@ -71,7 +71,7 @@ On the order message you'll also find:
 
 | Your requirement | Status |
 |---|---|
-| Ask the host who to invite | ✅ A people picker opens from the **Pick people** button |
+| Ask the host who to invite | ✅ A **Pick people** box right in the message |
 | Two options: host already knows the spot, or invitees suggest | ✅ **I've already decided** / **Let them suggest** |
 | Collect suggestions for 5 minutes | ✅ As many suggestions per person as they like, with a Remove button. The host sets the time |
 | Share the suggestions and give 3 minutes to vote | ✅ One button per spot. The host sets the time |

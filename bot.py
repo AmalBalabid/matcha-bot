@@ -547,36 +547,70 @@ def start_party_flow(host_id: str, state: dict) -> None:
     state["parties"][host_id] = party
     lock_user(state, host_id, host_id)
     set_host_idle_timer(party)
-    dm_live(party, "host", host_id, msg.ASK_INVITEES, _blocks(msg.ASK_INVITEES, [
-        _btn(msg.BUTTON_PICK_PEOPLE, "party_pick_people", party_ref(host_id, party), style="primary"),
-        _cancel_btn(host_id, party),
-    ]))
+    # The people picker sits in the message itself rather than in a form:
+    # in a form, Slack shows only two names before you have to expand it.
+    ref = party_ref(host_id, party)
+    dm_live(party, "host", host_id, msg.ASK_INVITEES, [
+        {"type": "section", "text": {"type": "mrkdwn", "text": msg.ASK_INVITEES}},
+        {"type": "actions", "block_id": "invitees_block", "elements": [
+            {"type": "multi_users_select", "action_id": "party_invitee_select",
+             "placeholder": {"type": "plain_text", "text": msg.INVITE_PICKER_PLACEHOLDER}},
+        ]},
+        {"type": "actions", "elements": [
+            _btn(msg.BUTTON_SEND_INVITES, "party_send_invites", ref, style="primary"),
+            _cancel_btn(host_id, party),
+        ]},
+    ])
     save_state(state)
 
 
-@app.action("party_pick_people")
+@app.action("party_invitee_select")
 @locked
-def handle_pick_people(ack, body, action, client):
+def handle_invitee_select(ack, body, action):
+    """Picking people in the message: remembered on the party, in case Slack
+    doesn't include the picker's current value when Send invites is tapped."""
+    ack()
+    state = load_state()
+    party_id, party = get_party_for_user(state, body["user"]["id"])
+    if party and party_id == body["user"]["id"] and party["phase"] == "awaiting_invitees":
+        party["picked"] = action.get("selected_users") or []
+        save_state(state)
+
+
+@app.action("party_send_invites")
+@locked
+def handle_send_invites(ack, body, action, client):
+    """Send invites: check who was picked, then open a small form for the
+    step times. The invites go out when that form is sent."""
     ack()
     ref = json.loads(action["value"])
+    host_id = body["user"]["id"]
     state = load_state()
     party = resolve_party(state, ref)
-    if not party or party["phase"] != "awaiting_invitees" or party["host_id"] != body["user"]["id"]:
+    if not party or party["phase"] != "awaiting_invitees" or party["host_id"] != host_id:
         return
+    picker = (body.get("state", {}).get("values", {}).get("invitees_block", {}).get("party_invitee_select") or {})
+    people = picker.get("selected_users")
+    if people is None:
+        people = party.get("picked", [])
+    people = [u for u in people if u != host_id or TEST_MODE]
+    if not people:
+        try:
+            client.chat_postEphemeral(channel=body["channel"]["id"], user=host_id, text=msg.INVITE_PICK_SOMEONE)
+        except Exception as e:
+            print(f"Could not post a hint to the host: {e}")
+        return
+    names = ", ".join(get_display_name(u) for u in people)
     client.views_open(trigger_id=body["trigger_id"], view={
         "type": "modal",
         "callback_id": "party_invite_modal",
-        "private_metadata": party_ref(ref["pid"], party, msg_channel=body["channel"]["id"], msg_ts=body["message"]["ts"]),
+        "private_metadata": party_ref(ref["pid"], party, people=people, msg_channel=body["channel"]["id"],
+                                      msg_ts=body["message"]["ts"]),
         "title": {"type": "plain_text", "text": msg.INVITE_MODAL_TITLE},
         "submit": {"type": "plain_text", "text": msg.INVITE_MODAL_SUBMIT},
-        # The step times below the people picker also make the form tall
-        # enough for the picker's list to show several names at once.
         "blocks": [{
-            "type": "input",
-            "block_id": "invitees_block",
-            "label": {"type": "plain_text", "text": msg.INVITE_MODAL_LABEL},
-            "element": {"type": "multi_users_select", "action_id": "invitees_input",
-                        "placeholder": {"type": "plain_text", "text": msg.INVITE_MODAL_PLACEHOLDER}},
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": msg.INVITE_MODAL_PEOPLE.format(names=names)[:3000]},
         }, {
             "type": "section",
             "text": {"type": "mrkdwn", "text": msg.STEP_TIMES_HEADER},
@@ -596,14 +630,8 @@ def handle_pick_people(ack, body, action, client):
 @app.view("party_invite_modal")
 @locked
 def handle_invite_submission(ack, body, view, client):
-    meta = json.loads(view["private_metadata"])
-    host_id = meta["pid"]
-    people = view["state"]["values"]["invitees_block"]["invitees_input"].get("selected_users") or []
-    people = [u for u in people if u != host_id or TEST_MODE]
-    if not people:
-        ack(response_action="errors", errors={"invitees_block": msg.INVITE_PICK_SOMEONE})
-        return
     ack()
+    meta = json.loads(view["private_metadata"])
     state = load_state()
     party = resolve_party(state, meta)
     if not party or party["phase"] != "awaiting_invitees":
@@ -616,7 +644,8 @@ def handle_invite_submission(ack, body, view, client):
             minutes[step] = min(max(int(raw), 1), MAX_STEP_MINUTES)
         except (TypeError, ValueError):
             minutes[step] = DEFAULT_MINUTES[step]
-    names = invite_people(party, state, people)
+    party.pop("picked", None)
+    names = invite_people(party, state, meta["people"])
     if names:
         retext_live(party, meta["msg_ts"], None)
         save_state(state)
@@ -1788,11 +1817,15 @@ def handle_bills_submission(ack, body, view, client):
             amount = float(block["amount_input"]["value"])
         except (KeyError, TypeError, ValueError):
             continue
-        # 0 means nothing to pay (e.g. they paid already), so no message.
-        if uid not in guests or amount <= 0:
+        if uid not in guests:
             continue
-        dm(uid, msg.BILL_NOTICE.format(host=f"<@{party['host_id']}>", amount=_format_amount(amount),
-                                       spot=party.get("spot_name") or "the spot"))
+        host, spot = f"<@{party['host_id']}>", party.get("spot_name") or "the spot"
+        # 0 means it's on the host, and they're told so.
+        if amount <= 0:
+            dm(uid, msg.BILL_FREE_NOTICE.format(host=host, spot=spot))
+            sent.append(msg.BILL_FREE_ITEM.format(name=guests[uid]))
+            continue
+        dm(uid, msg.BILL_NOTICE.format(host=host, amount=_format_amount(amount), spot=spot))
         sent.append(msg.BILL_SENT_ITEM.format(name=guests[uid], amount=_format_amount(amount)))
     line = msg.LINE_HOST_BILLS_SENT.format(bills=", ".join(sent)) if sent else msg.LINE_HOST_NO_BILLS
     retext_live(party, meta["msg_ts"], None)

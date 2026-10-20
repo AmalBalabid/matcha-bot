@@ -31,14 +31,15 @@ You get things going by typing `/matcha-party` in your DM with the bot (it only 
 
 **You run it from your DM, and the bot asks who to invite:**
 > Matcha Party started :matcha-salute:
-> Who wants to order matcha? Tap below to pick people
+> Who wants to order matcha? Pick people below, then tap Send invites
 
-* Button: **Pick people**
+* People picker: **Pick people** *(right in the message, so it has the full chat width for names)*
+* Button: **Send invites**
 * Button: **Cancel party** *(this red button is on most of your messages, so you can scrap the party at any step)*
 
-**"Pick people" opens a form:**
+**"Send invites" opens a small form:**
 * Title: **Invite to Matcha Party**
-* Field: **Who's invited?** (type names to add people)
+* At the top: **Inviting: *{names}***
 * **How long each step lasts** (in minutes, 1 to 60), already filled in with the usual times so you can just leave them:
   * **Answering the invite** (5)
   * **Suggesting spots** (5) *(only used if you let the group suggest)*
@@ -51,7 +52,7 @@ You get things going by typing `/matcha-party` in your DM with the bot (it only 
 **After you send it:** *(grey line under the question)*
 > Invites sent to *{names}*
 
-**If you only picked yourself, the form shows:**
+**If you tap "Send invites" with nobody picked (or only yourself), only you see this under the message:**
 > Pick at least one person other than you.
 
 **If some people can't get an invite at all (bots, deactivated accounts, or a message that failed to send):**
@@ -363,14 +364,17 @@ You get things going by typing `/matcha-party` in your DM with the bot (it only 
 
 **"Send bills" opens a form:**
 * Title: **Send bills**
-* One field per person who ordered: **{name} (SAR)**, with the hint "Enter 0 if they don't owe anything"
+* One field per person who ordered: **{name} (SAR)**, with the hint "Enter 0 if it's on you"
 * Submit button: **Send**
 
-**Each person with an amount above 0 gets this privately:**
+**Each person gets this privately:**
 > You owe {host} {amount} SAR for your order from *{spot}*
 
+**Or, if you entered 0:**
+> Your matcha from *{spot}* is on {host} :matcha-kitty:
+
 **Under the bills question:** *(grey line)*
-> Bills sent: *{name} {amount} SAR, ...* / No bills sent
+> Bills sent: *{name} {amount} SAR, {name} on you, ...* / No bills sent
 
 **Then you're asked:**
 > Got an ETA for when it'll arrive?
