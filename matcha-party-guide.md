@@ -6,9 +6,9 @@ For the exact wording of every message, see `matcha-bot-messages.md`. If you'd l
 
 ---
 
-## For the trial
+## Who can use it
 
-For now, **only you and Amal can start a party**. Anyone else who tries is told it isn't open yet. You can still invite anyone. Once we're happy with it, it'll be opened to everyone.
+**Anyone can start a party** and invite anyone.
 
 ---
 
@@ -81,7 +81,7 @@ On the order message you'll also find:
 | Send the host an order summary | ✅ Also lists who didn't order and who couldn't make it |
 | Ask the host to confirm the order was sent | ✅ **I placed the order ✅** |
 | Tell invitees the order was sent, and ask the host for an ETA | ✅ ETA is optional |
-| Anyone can start a party, several at once | ✅ After the trial (for now only you and Amal) |
+| Anyone can start a party, several at once | ✅ |
 | Invitees accept or decline | ✅ **I'm in!** / **Can't make it** |
 | One active party per person | ✅ |
 | Don't reveal that someone is in another party | ✅ They show as invited, then decline automatically |
@@ -101,4 +101,4 @@ On the order message you'll also find:
 - Buttons replaced by a grey line showing each person's answer
 - The bot keeps working through restarts, and quiet parties close on their own
 
-Enjoy, and let Amal know what you think after the trial!
+Enjoy, and let Amal know what you think!
