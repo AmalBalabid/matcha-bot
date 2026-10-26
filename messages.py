@@ -77,7 +77,7 @@ DM_HELLO = "Hi! Run /matcha-party here to start a group matcha order."
 # @-mention the invitees. Used in start_party_flow().
 ASK_INVITEES = (
     "Matcha Party started :matcha-salute:\n"
-    "Who wants to order matcha? Pick people below, then tap Send invites"
+    "Who wants to order matcha? Pick people in the box, then tap Send invites"
 )
 
 

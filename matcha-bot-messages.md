@@ -31,9 +31,9 @@ You get things going by typing `/matcha-party` in your DM with the bot (it only 
 
 **You run it from your DM, and the bot asks who to invite:**
 > Matcha Party started :matcha-salute:
-> Who wants to order matcha? Pick people below, then tap Send invites
+> Who wants to order matcha? Pick people in the box, then tap Send invites
 
-* People picker: **Pick people** *(right in the message, so it has the full chat width for names)*
+* People picker: **Pick people** *(right in the message, next to the text)*
 * Button: **Send invites**
 * Button: **Cancel party** *(this red button is on most of your messages, so you can scrap the party at any step)*
 

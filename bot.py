@@ -549,13 +549,14 @@ def start_party_flow(host_id: str, state: dict) -> None:
     set_host_idle_timer(party)
     # The people picker sits in the message itself rather than in a form:
     # in a form, Slack shows only two names before you have to expand it.
+    # Slack only allows a multi-select as a section's accessory, not in an
+    # actions block.
     ref = party_ref(host_id, party)
     dm_live(party, "host", host_id, msg.ASK_INVITEES, [
-        {"type": "section", "text": {"type": "mrkdwn", "text": msg.ASK_INVITEES}},
-        {"type": "actions", "block_id": "invitees_block", "elements": [
-            {"type": "multi_users_select", "action_id": "party_invitee_select",
-             "placeholder": {"type": "plain_text", "text": msg.INVITE_PICKER_PLACEHOLDER}},
-        ]},
+        {"type": "section", "block_id": "invitees_block",
+         "text": {"type": "mrkdwn", "text": msg.ASK_INVITEES},
+         "accessory": {"type": "multi_users_select", "action_id": "party_invitee_select",
+                       "placeholder": {"type": "plain_text", "text": msg.INVITE_PICKER_PLACEHOLDER}}},
         {"type": "actions", "elements": [
             _btn(msg.BUTTON_SEND_INVITES, "party_send_invites", ref, style="primary"),
             _cancel_btn(host_id, party),
